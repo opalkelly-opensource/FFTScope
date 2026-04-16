@@ -1,0 +1,53 @@
+/**
+ * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+.okPanel {
+    /* Layout */
+    display: flex;
+    padding: 10px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+    align-self: stretch;
+    flex-shrink: 0;
+    overflow: hidden;
+
+    /* Style */
+    border-radius: 4px;
+    /* border: 1px solid #343434; */
+    background: #020202;
+}
+
+.okPanelHeader {
+    /* Layout */
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    align-self: stretch;
+}
+
+.okPanelContent {
+    /* Layout */
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    align-self: stretch;
+    flex: 1;
+    min-height: 0;
+}
+
+.okPanelTitleText {
+    /* Typography */
+    color: #989DA3;
+    font-family: Inter;
+    font-size: 24px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: normal;
+}

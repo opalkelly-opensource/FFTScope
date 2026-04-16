@@ -1,0 +1,160 @@
+/**
+ * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+.okFrequencyVectorEditPanel {
+    /* Layout */
+    display: inline-flex;
+    padding: 10px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+
+    /* Style */
+    border-radius: 4px;
+    border: 1px solid #4953C4;
+    background: var(--Dark, #282828);
+    box-shadow: 4px 4px 18px 0 rgba(0, 0, 0, 0.80);
+}
+
+.okFrequencyVectorEditPanel .okFrequencyEditBox {
+    /* Layout */
+    display: flex;
+    width: 160px;
+    padding: 7px 10px;
+    justify-content: flex-end;
+    align-items: baseline;
+    gap: 5px;
+    align-self: stretch;
+
+    /* Style */
+    border-radius: 4px;
+    background: #020202;
+}
+
+.okFrequencyVectorEditPanel .okFrequencyText {
+    /* Typography */
+    color: #CBF9E3;
+    text-align: right;
+    font-family: "Roboto Mono";
+    font-size: 24px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1;
+}
+
+.okFrequencyVectorEditPanel .okAmplitudeEditBox {
+    /* Layout */
+    display: flex;
+    width: 84px;
+    padding: 7px 10px;
+    justify-content: flex-end;
+    align-items: baseline;
+    gap: 5px;
+
+    /* Style */
+    border-radius: 4px;
+    background: #020202;
+}
+
+.okFrequencyVectorEditPanel .okAmplitudeText {
+    /* Typography */
+    color: #CBF9E3;
+    text-align: right;
+    font-family: "Roboto Mono";
+    font-size: 20px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1;
+}
+
+.okFrequencyVectorEditPanel .okUnitsLabel {
+    /* Typography */
+    color: #D472FA;
+    font-family: "Roboto Mono";
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1;
+}
+
+.okFrequencyVectorEditRow {
+    /* Layout */
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    align-self: stretch;
+}
+
+.okFrequencyVectorEditPanel button {
+    all: unset;
+}
+
+.okFrequencyVectorEditPanel .okRadioGroupRoot {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex: 1 0 0;
+}
+
+.okFrequencyVectorEditPanel .okRadioGroupItem {
+    /* Layout */
+    display: flex;
+    width: 34px;
+    height: 34px;
+    padding: 5px;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+
+    /* Style */
+    border-radius: 4px;
+    background: #020202;
+}
+
+.okFrequencyVectorEditPanel .okRadioGroupItem:hover {
+    background-color: var(--violet-3);
+}
+
+.okFrequencyVectorEditPanel .okRadioGroupItem[data-state="checked"] {
+    /* Style */
+    border: 1px solid #44BD84;
+}
+
+.okFrequencyVectorEditPanel .okSwitchRoot {
+    /* Layout */
+    display: inline-flex;
+    width: 18.333px;
+    height: 10px;
+    align-items: center;
+    position: relative;
+    vertical-align: top;
+    flex-shrink: 0;
+    box-sizing: border-box;
+
+    /* Style */
+    background-color: #989DA3;
+    border-radius: 9999px;
+
+    &[data-state="checked"] {
+        background-color: #44BD84;
+    }
+}
+
+.okFrequencyVectorEditPanel .okSwitchThumb {
+    /* Layout */
+    display: block;
+    width: 8.33px;
+    height: 8.33px;
+    background-color: white;
+    border-radius: 9999px;
+    box-sizing: border-box;
+    transform: translateX(0.83px);
+    &[data-state="checked"] {
+        transform: translateX(9.17px);
+    }
+}

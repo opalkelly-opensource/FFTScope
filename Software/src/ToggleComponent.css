@@ -1,0 +1,39 @@
+
+/**
+ * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+.okToggleComponent {
+    /* Layout */
+    width: 112px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.okToggleComponent button {
+	all: unset;
+}
+
+.okToggleComponent .okToggleRoot {
+    /* Layout */
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    /* Style */
+    box-sizing: border-box;
+    background-color: black;
+    border: 2px solid gray;
+    border-radius: 4px;
+}
+
+.okToggleComponent .okToggleRoot:hover {
+    /* Style */
+    background-color: var(--violet-3);
+}

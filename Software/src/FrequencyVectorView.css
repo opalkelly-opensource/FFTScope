@@ -1,0 +1,104 @@
+/**
+ * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+.okFrequencyVectorPanel {
+    /* Layout */
+    display: flex;
+    width: 175px;
+    padding: 10px;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: flex-start;
+    gap: 5px;
+    align-self: stretch;
+}
+
+.okFrequencyVectorPanel .okFrequencyBox {
+    /* Layout */
+    display: flex;
+    width: 155px;
+    padding: 7px 10px;
+    justify-content: flex-end;
+    align-items: baseline;
+    gap: 5px;
+    align-self: stretch;
+
+    /* Style */
+    border-radius: 4px;
+    background: #020202;
+}
+
+.okFrequencyVectorPanel .okFrequencyVectorRow {
+    /* Layout */
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    align-self: stretch;
+
+}
+
+.okFrequencyVectorPanel .okAmplitudeBox {
+    /* Layout */
+    display: flex;
+    width: 74px;
+    padding: 2px 5px;
+    justify-content: flex-end;
+    align-items: baseline;
+    gap: 5px;
+
+    /* Style */
+    border-radius: 4px;
+    background: #020202;
+}
+
+.okFrequencyVectorPanel .okFrequencyText {
+    /* Typography */
+    color: #CBF9E3;
+    text-align: right;
+    font-family: "Roboto Mono";
+    font-size: 24px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1;
+}
+
+.okFrequencyVectorPanel .okAmplitudeText {
+    /* Typography */
+    color: #CBF9E3;
+    text-align: right;
+    font-family: "Roboto Mono";
+    font-size: 16px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1;
+}
+
+.okFrequencyVectorPanel .okUnitsLabel {
+    /* Typography */
+    color: #D472FA;
+    font-family: "Roboto Mono";
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: normal;
+}
+
+.okFrequencyVectorPanel .okWaveformIndicator {
+    /* Layout */
+    display: flex;
+    width: 34px;
+    height: 27px;
+    padding: 5px;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+
+    /* Style */
+    border-radius: 4px;
+    background: #020202;
+}

@@ -1,0 +1,133 @@
+/**
+ * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+.okDigitalSignalSampler {
+    /* Layout */
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    flex: 1;
+    align-self: stretch;
+}
+
+.okDigitalSignalSampler button {
+    all: unset;
+}
+
+.okDigitalSignalSampler .okChannelSelectorPanel {
+    /* Layout */
+    display: flex;
+    height: 24px;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.okDigitalSignalSampler .okChannelSelectorPanel .okChannelLabelText {
+    /* Typography */
+    color: #D0D7DF;
+    text-align: center;
+    font-family: Inter;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 12px; /* 100% */
+}
+
+.okDigitalSignalSampler .okDigitalSignalSamplerControlPanel {
+    /* Layout */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.okDigitalSignalSampler .okSwitchContainer {
+    /* Layout */
+    display: flex;
+    padding: 4px;
+    align-items: center;
+    align-self: stretch;
+    gap: 10px;
+}
+
+.okDigitalSignalSampler .okSwitchRoot {
+    /* Layout */
+    display: inline-flex;
+    width: 18.333px;
+    height: 10px;
+    align-items: center;
+    position: relative;
+    vertical-align: top;
+    flex-shrink: 0;
+    box-sizing: border-box;
+
+    /* Style */
+    background-color: #989DA3;
+    border-radius: 9999px;
+
+    &[data-state="checked"] {
+        background-color: #44BD84;
+    }
+}
+
+.okDigitalSignalSampler .okSwitchThumb {
+    /* Layout */
+    display: block;
+    width: 8.33px;
+    height: 8.33px;
+    background-color: white;
+    border-radius: 9999px;
+    box-sizing: border-box;
+    transform: translateX(0.83px);
+    &[data-state="checked"] {
+        transform: translateX(9.17px);
+    }
+}
+
+.okDigitalSignalSampler .okSwitchLabel {
+    /* Typography */
+    color:#D0D7DF;
+    text-align: center;
+    font-family: Inter;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 500;
+    line-height: 14px; /* 100% */
+}
+
+.okDigitalSignalSampler .okButton {
+    /* Layout */
+    display: inline-flex;
+    padding: 6px 12px;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+
+    /* Style */
+    border-width: 0px;
+    border-radius: 4px;
+    background: #44bd84;
+
+    /* Typography */
+    color: #fff;
+    text-align: center;
+    font-family: Inter, "Nunito Sans", sans-serif, ui-sans-serif;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 12px; /* 100% */
+
+    /* State Pressed */
+    &:is(:active) {
+        background: #329466;
+    }
+
+    /* State Disabled */
+    &:is(:disabled) {
+        background: #d0d7df;
+    }
+}
