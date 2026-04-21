@@ -7,7 +7,7 @@
 
 import { Hertz } from "./FFTConfiguration";
 
-import { FrequencyVector } from "./FFTSignalGeneratorAdapter";
+import { FrequencyVector } from "./WaveformGeneratorAdapter";
 
 import "./FrequencyVectorView.css";
 

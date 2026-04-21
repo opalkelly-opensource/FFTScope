@@ -8,7 +8,7 @@
       "args": [
         "--remote-debugging-port=9222",
         "--remote-allow-origins=http://127.0.0.1:9222",
-        "--app-package=${workspaceFolder}\\output\\app.fpp"
+        "--app-package=${workspaceFolder}\\output\\FFTScope.fpp"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -18,7 +18,7 @@
         "args": [
           "--remote-debugging-port=9222",
           "--remote-allow-origins=http://127.0.0.1:9222",
-          "--app-package=${workspaceFolder}/output/app.fpp"
+          "--app-package=${workspaceFolder}/output/FFTScope.fpp"
         ]
       },
       "problemMatcher": []
@@ -30,7 +30,7 @@
       "args": [
         "--remote-debugging-port=9222",
         "--remote-allow-origins=http://127.0.0.1:9222",
-        "--app-package=${workspaceFolder}\\output\\app-dev.fpp"
+        "--app-package=${workspaceFolder}\\output\\FFTScope-dev.fpp"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -40,7 +40,7 @@
         "args": [
           "--remote-debugging-port=9222",
           "--remote-allow-origins=http://127.0.0.1:9222",
-          "--app-package=${workspaceFolder}/output/app-dev.fpp"
+          "--app-package=${workspaceFolder}/output/FFTScope-dev.fpp"
         ]
       },
       "problemMatcher": []

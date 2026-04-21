@@ -51,6 +51,16 @@ module.exports = {
           filename: 'assets/fonts/[name][ext]'
         }
       },
+      {
+        test: /\.(bit)$/i,
+        type: 'asset/resource',
+        generator: {
+          filename: (sourcePath) => {
+            const productName = path.basename(path.dirname(sourcePath.filename));
+            return `assets/bitfiles/${productName}/[name][ext]`;
+          }
+        }
+      },
     ],
   },
   resolve: {

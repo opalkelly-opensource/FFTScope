@@ -10,7 +10,7 @@ import * as RadioGroup from "@radix-ui/react-radio-group"
 
 import { Hertz } from "./FFTConfiguration";
 
-import { FrequencyVector, dBFS } from "./FFTSignalGeneratorAdapter";
+import { FrequencyVector, dBFS } from "./WaveformGeneratorAdapter";
 
 import "./FrequencyVectorEditView.css";
 

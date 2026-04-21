@@ -22,3 +22,82 @@
     max-width: 100% !important;
     max-height: 100% !important;
 }
+
+.okSpectrumHeaderControls {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+.okSpectrumColorDial {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    transition: opacity 150ms ease;
+}
+
+.okSpectrumColorDial.disabled {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.okSpectrumColorDialValue {
+    color: #D0D7DF;
+    font-family: "Roboto Mono";
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    min-width: 32px;
+    text-align: right;
+}
+
+.okSpectrumModeSwitch {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.okSpectrumModeSwitch button {
+    all: unset;
+}
+
+.okSpectrumModeLabel {
+    color: #D0D7DF;
+    font-family: Inter;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 14px;
+}
+
+.okSpectrumModeSwitch .okSwitchRoot {
+    display: inline-flex;
+    width: 18.333px;
+    height: 10px;
+    align-items: center;
+    position: relative;
+    vertical-align: top;
+    flex-shrink: 0;
+    box-sizing: border-box;
+
+    background-color: #989DA3;
+    border-radius: 9999px;
+    cursor: pointer;
+}
+
+.okSpectrumModeSwitch .okSwitchRoot[data-state="checked"] {
+    background-color: #44BD84;
+}
+
+.okSpectrumModeSwitch .okSwitchThumb {
+    display: block;
+    width: 8.33px;
+    height: 8.33px;
+    background-color: white;
+    border-radius: 9999px;
+    box-sizing: border-box;
+    transform: translateX(0.83px);
+}
+
+.okSpectrumModeSwitch .okSwitchThumb[data-state="checked"] {
+    transform: translateX(9.17px);
+}

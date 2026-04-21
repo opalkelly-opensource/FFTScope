@@ -9,14 +9,28 @@ Thumbs.db
 *.swo
 *~
 
-# Temporary files
-*.tmp
+# Generic logs + temp
 *.log
+*.tmp
 
-# Vivado files
-Vivado/
+# Vivado tooling output (every project.tcl sets project_dir to "v")
+v/
+.Xil/
+*.jou
+*.str
 
-# Python files
-Software/python/__pycache__/
+# Vitis HLS build dirs + runtime metadata
+**/hls/*/vitis/
+**/vitis/
+dfx_runtime.txt
+
+# FrontPanel SDK HDL stubs. The okHost.{vp,xdc,veo} files under any
+# FrontPanel/ directory are copied in by the developer per that
+# directory's FrontPanel/README.txt; only the README is tracked.
+**/FrontPanel/*
+!**/FrontPanel/README*
+
+# Python
+**/__pycache__/
 *.pyc
 *.pyo

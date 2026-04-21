@@ -6,6 +6,11 @@
  */
 
 .okNumberDragSliderLabel {
+    /* Layout */
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+
     /* Typography */
     color: #D472FA;
     font-family: "Roboto Mono";

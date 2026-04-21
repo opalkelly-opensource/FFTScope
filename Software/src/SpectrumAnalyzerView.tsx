@@ -20,13 +20,17 @@ import {
 
 import { Line } from "react-chartjs-2";
 
-import { SpectrumAnalyzer } from "./SpectrumAnalyzer";
+import { SpectrumAnalyzerDriver } from "./SpectrumAnalyzerDriver";
 
-import { IFPGADataPortClassic, WorkQueue, ByteCount } from "@opalkelly/frontpanel-platform-api";
+import { WorkQueue } from "@opalkelly/frontpanel-platform-api";
 
-import FFTConfiguration, { Hertz } from "./FFTConfiguration";
+import { ADCProductConfig } from "./ADCProductConfig";
 
 import { Vector2D } from "./Vector";
+
+import SpectrogramView from "./SpectrogramView";
+
+export type SpectrumDisplayMode = "spectrum" | "spectrogram";
 
 /**
  * Properties for the Spectrum Analyzer View.
@@ -34,24 +38,26 @@ import { Vector2D } from "./Vector";
 interface SpectrumAnalyzerViewProps {
     label: string;
     channelColors: string[];
-    fpgaDataPort: IFPGADataPortClassic;
+    adcConfig: ADCProductConfig;
+    driver: SpectrumAnalyzerDriver;
     workQueue: WorkQueue;
+    mode: SpectrumDisplayMode;
+    spectrogramNoiseFloor: number;
+    spectrogramGamma: number;
 }
 
 /**
  * Spectrum Analyzer View component for displaying the spectrum of a signal.
  */
 class SpectrumAnalyzerView extends Component<SpectrumAnalyzerViewProps> {
-    private readonly _FFTConfiguration: FFTConfiguration;
-    private readonly _SpectrumAnalyzer: SpectrumAnalyzer;
-
     private readonly _SampleChannels: Float64Array[];
 
     private _ChartRef: React.RefObject<ChartJS<"line">>;
+    private _SpectrogramRef: React.RefObject<SpectrogramView>;
     private _ChartOptions: ChartOptions<"line">;
     private _ChartData;
 
-    private _FrequencyScale = 0.000001;
+    private _FrequencyScale = 0.000001;     // MHz frequency scale
 
     protected get WorkQueue(): WorkQueue {
         return this.props.workQueue;
@@ -60,29 +66,17 @@ class SpectrumAnalyzerView extends Component<SpectrumAnalyzerViewProps> {
     constructor(props: SpectrumAnalyzerViewProps) {
         super(props);
 
-        // Create FFT Configuration
-        const fftLength = 1024; // 1024 bin FFT Length
-        const sampleRate: Hertz = 125000000; // 125MHz Sample Rate
-        const maxAmplitudeValue = 0x1fffff;
-
-        this._FFTConfiguration = new FFTConfiguration(fftLength, sampleRate, maxAmplitudeValue);
-
-        // Create Spectrum Analyzer
-        const sampleSize: ByteCount = 8;
-        const sampleCount: number = this._FFTConfiguration.FFTLength;
-
-        this._SpectrumAnalyzer = new SpectrumAnalyzer(props.fpgaDataPort, sampleSize, sampleCount);
-
         // Creates an array of two Float64Array objects one for each of the two channels available.
         this._SampleChannels = new Array(2);
 
-        this._SampleChannels[0] = new Float64Array(this._SpectrumAnalyzer.SampleCount);
-        this._SampleChannels[1] = new Float64Array(this._SpectrumAnalyzer.SampleCount);
+        this._SampleChannels[0] = new Float64Array(this.props.driver.SampleCount);
+        this._SampleChannels[1] = new Float64Array(this.props.driver.SampleCount);
 
         // Create ChartJS Chart Reference to display the output of the Spectrum Analyzer
         ChartJS.register(LinearScale, PointElement, LineElement, Title);
 
         this._ChartRef = React.createRef();
+        this._SpectrogramRef = React.createRef();
 
         this._ChartOptions = {
             animation: false,
@@ -92,7 +86,7 @@ class SpectrumAnalyzerView extends Component<SpectrumAnalyzerViewProps> {
                 x: {
                     type: "linear",
                     min: 0.0,
-                    max: this._FFTConfiguration.GetBinFrequency(512) * this._FrequencyScale,
+                    max: props.driver.FFTConfiguration.GetBinFrequency(512) * this._FrequencyScale,
                     ticks: { display: true, stepSize: 5 },
                     title: { display: true, text: "Frequency (MHz)" },
                     grid: {
@@ -120,10 +114,10 @@ class SpectrumAnalyzerView extends Component<SpectrumAnalyzerViewProps> {
         // Create Chart Data that will be displayed by the ChartJS Chart
         const channels: Vector2D[][] = Array(2);
 
-        channels[0] = new Array<Vector2D>(this._SpectrumAnalyzer.SampleCount)
+        channels[0] = new Array<Vector2D>(this.props.driver.SampleCount)
             .fill({ x: 0.0, y: 0.0 })
             .map(() => ({ x: 0.0, y: 0.0 }));
-        channels[1] = new Array<Vector2D>(this._SpectrumAnalyzer.SampleCount)
+        channels[1] = new Array<Vector2D>(this.props.driver.SampleCount)
             .fill({ x: 0.0, y: 0.0 })
             .map(() => ({ x: 0.0, y: 0.0 }));
 
@@ -158,9 +152,21 @@ class SpectrumAnalyzerView extends Component<SpectrumAnalyzerViewProps> {
     }
 
     render(): ReactNode {
+        const isSpectrogram = this.props.mode === "spectrogram";
         return (
             <div className="okSpectrumAnalyzerChartContainer">
-                <Line ref={this._ChartRef} options={this._ChartOptions} data={this._ChartData} />
+                {isSpectrogram ? (
+                    <SpectrogramView
+                        ref={this._SpectrogramRef}
+                        label="Spectrogram"
+                        adcConfig={this.props.adcConfig}
+                        binCount={this.props.driver.FFTConfiguration.FFTLength >> 1}
+                        dbFloor={this.props.spectrogramNoiseFloor}
+                        gamma={this.props.spectrogramGamma}
+                    />
+                ) : (
+                    <Line ref={this._ChartRef} options={this._ChartOptions} data={this._ChartData} />
+                )}
             </div>
         );
     }
@@ -173,44 +179,43 @@ class SpectrumAnalyzerView extends Component<SpectrumAnalyzerViewProps> {
      */
     public async UpdateChartData(sampleChannels: Int16Array[]): Promise<void> {
         await this.WorkQueue.post(async () => {
-            await this._SpectrumAnalyzer.ComputeSpectrum(
+            await this.props.driver.ComputeSpectrum(
                 sampleChannels[0],
                 this._SampleChannels[0]
             );
-            await this._SpectrumAnalyzer.ComputeSpectrum(
+            await this.props.driver.ComputeSpectrum(
                 sampleChannels[1],
                 this._SampleChannels[1]
             );
         });
 
-        const maximumAmplitudeValue: number = this._FFTConfiguration.MaximumAmplitudeValue;
-
         for (let sampleIndex = 0; sampleIndex < this._SampleChannels[0].length; sampleIndex++) {
             this._ChartData.datasets[0].data[sampleIndex].x =
-                this._FFTConfiguration.GetBinFrequency(sampleIndex) * this._FrequencyScale;
+                this.props.driver.FFTConfiguration.GetBinFrequency(sampleIndex) * this._FrequencyScale;
             this._ChartData.datasets[0].data[sampleIndex].y =
-                20.0 * Math.log10(this._SampleChannels[0][sampleIndex] / maximumAmplitudeValue);
+                20.0 * Math.log10(this._SampleChannels[0][sampleIndex] / this.props.adcConfig.fftOutputPeak);
         }
 
         for (let sampleIndex = 0; sampleIndex < this._SampleChannels[1].length; sampleIndex++) {
             this._ChartData.datasets[1].data[sampleIndex].x =
-                this._FFTConfiguration.GetBinFrequency(sampleIndex) * this._FrequencyScale;
+                this.props.driver.FFTConfiguration.GetBinFrequency(sampleIndex) * this._FrequencyScale;
             this._ChartData.datasets[1].data[sampleIndex].y =
-                20.0 * Math.log10(this._SampleChannels[1][sampleIndex] / maximumAmplitudeValue);
+                20.0 * Math.log10(this._SampleChannels[1][sampleIndex] / this.props.adcConfig.fftOutputPeak);
         }
 
-        if (this._ChartRef.current != null) {
+        if (this.props.mode === "spectrogram") {
+            this._SpectrogramRef.current?.AddFrame(this._SampleChannels[0], this._SampleChannels[1]);
+        } else if (this._ChartRef.current != null) {
             this._ChartRef.current.update("none");
         }
     }
 
     public async UpdateChannelEnableStates(channelEnableStates: boolean[]) {
+        this._ChartData.datasets[0].hidden = !channelEnableStates[0];
+        this._ChartData.datasets[1].hidden = !channelEnableStates[1];
+
         const spectrumChart = this._ChartRef.current;
-
         if (spectrumChart) {
-            spectrumChart.data.datasets[0].hidden = !channelEnableStates[0];
-            spectrumChart.data.datasets[1].hidden = !channelEnableStates[1];
-
             spectrumChart.update();
         }
     }

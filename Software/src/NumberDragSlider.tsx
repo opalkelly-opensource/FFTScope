@@ -26,6 +26,7 @@ export interface NumberDragSliderProps {
     stepsPerPixel: { coarse: number, fine: number }
     value: number;
     onValueChange: ValueChangeEventHandler;
+    children?: React.ReactNode;
 }
 
 function NumberDragSlider(props: NumberDragSliderProps) {
@@ -96,13 +97,13 @@ function NumberDragSlider(props: NumberDragSliderProps) {
         <span
             className="okNumberDragSliderLabel"
             onMouseDown={handleSliderMouseDown}
-            style={{ 
+            style={{
                 cursor: isSliderDragging ? 'move' : 'move',
                 userSelect: 'none',
                 WebkitUserSelect: 'none'
             }}
             ref={dragSliderRef}>
-            {props.label}
+            {props.children ?? props.label}
         </span>
     );
 }

@@ -21,7 +21,6 @@ export type Hertz = number;
 class FFTConfiguration {
     private readonly _FFTLength: number;
     private readonly _SampleRate: Hertz;
-    private readonly _MaximumAmplitudeValue: number;
 
     /**
      * Get the length of the FFT.
@@ -37,17 +36,9 @@ class FFTConfiguration {
         return this._SampleRate;
     }
 
-    /**
-     * Get the maximum amplitude value of the FFT.
-     */
-    public get MaximumAmplitudeValue() {
-        return this._MaximumAmplitudeValue;
-    }
-
-    constructor(fftLength: number, sampleRate: Hertz, maximumAmplitudeValue: number) {
+    constructor(fftLength: number, sampleRate: Hertz) {
         this._FFTLength = fftLength;
         this._SampleRate = sampleRate;
-        this._MaximumAmplitudeValue = maximumAmplitudeValue;
     }
 
     /**
