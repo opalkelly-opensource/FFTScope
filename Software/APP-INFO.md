@@ -47,6 +47,9 @@ Plots FFT magnitude versus frequency (MHz) for both ADC channels.
 
 ## Version History
 
+* 1.1.1
+  * Updated FFTScope app icon
+  * Updated FFTScope to use new packaging script
 * 1.1.0 (released 2026-04-20)
   * Add SZG-HUB1450-AU10P host board support
   * Add spectrogram mode with floor (dBFS) and contrast (gamma) adjustments
