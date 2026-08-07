@@ -7,8 +7,6 @@
 
 import { Component, ReactNode } from "react";
 
-import { WorkQueue } from "@opalkelly/frontpanel-platform-api";
-
 import * as Switch from "@radix-ui/react-switch";
 
 import { Subscription } from "sub-events";
@@ -24,61 +22,39 @@ import {
 import ToggleComponent from "./ToggleComponent";
 
 /**
- * Event handler for the SampleChannelsUpdate event.
- */
-export type SampleChannelsUpdateEventHandler = (sampleChannels: Int16Array[]) => Promise<void>;
-export type ChannelEnableStateChangeHandler = (channelIndex: number, checked: boolean | 'indeterminate') => void;
-
-/**
  * Digitizer View Properties
+ *
+ * The View is purely presentational. App.tsx owns the captured-sample
+ * buffers, the continuous capture loop, and the shared handlers that
+ * UI controls and the matching MCP tools both call.
  */
 interface DigitizerViewProps {
     label: string;
     driver: DigitizerDriver;
-    workQueue: WorkQueue;
-    updatePeriodMilliseconds: number;
-    onSampleChannelsUpdate: SampleChannelsUpdateEventHandler;
     channelEnableStates: boolean[];
-    channelEnableStateChange: ChannelEnableStateChangeHandler;
+    onChannelEnableStateChange: (channelIndex: number, enabled: boolean) => void;
     channelColors: string[];
+    continuousEnabled: boolean;
+    onContinuousChange: (enabled: boolean) => void;
+    onCaptureOnce: () => void;
+    onReset: () => void;
 }
 
-/**
- * Digitizer View State
- */
 interface DigitizerViewState {
     isOperationPending: boolean;
-    isUpdateTimerEnabled: boolean;
 }
 
 /**
- * Digitizer view component used to display the output of a Digitizer.
+ * Digitizer view component used to display the controls of a Digitizer.
  */
-class DigitizerView extends Component<
-    DigitizerViewProps,
-    DigitizerViewState
-> {
-    private readonly _SampleChannels: Int16Array[];
-
+class DigitizerView extends Component<DigitizerViewProps, DigitizerViewState> {
     private _DigitizerStateChangeEventSubscription: Subscription | null = null;
-
-    protected get WorkQueue(): WorkQueue {
-        return this.props.workQueue;
-    }
 
     constructor(props: DigitizerViewProps) {
         super(props);
 
-        // Creates an array of two Int16Array objects one for each of the two channels available.
-        this._SampleChannels = new Array(2);
-
-        this._SampleChannels[0] = new Int16Array(this.props.driver.SampleCount);
-        this._SampleChannels[1] = new Int16Array(this.props.driver.SampleCount);
-
-        // Set the initial state of the component
         this.state = {
-            isOperationPending: false,
-            isUpdateTimerEnabled: false,
+            isOperationPending: false
         };
     }
 
@@ -92,27 +68,19 @@ class DigitizerView extends Component<
         this._DigitizerStateChangeEventSubscription = this.props.driver.StateChangedEvent.subscribe(
             this.OnDigitizerStateChange.bind(this)
         );
-
-        this.setState({ isUpdateTimerEnabled: true });
     }
 
     componentWillUnmount(): void {
-        this.setState({ isUpdateTimerEnabled: false });
-
         this._DigitizerStateChangeEventSubscription?.cancel();
     }
 
-    componentDidUpdate(prevProps: DigitizerViewProps, prevState: DigitizerViewState): void {
+    componentDidUpdate(prevProps: DigitizerViewProps): void {
         // Re-subscribe when the driver instance swaps (StrictMode, reconnect).
         if (prevProps.driver !== this.props.driver) {
             this._DigitizerStateChangeEventSubscription?.cancel();
             this._DigitizerStateChangeEventSubscription = this.props.driver.StateChangedEvent.subscribe(
                 this.OnDigitizerStateChange.bind(this)
             );
-        }
-        if ((this.state.isUpdateTimerEnabled !== prevState.isUpdateTimerEnabled) && this.state.isUpdateTimerEnabled)
-        {
-            this.UpdateSampleChannelsLoop();
         }
     }
 
@@ -135,10 +103,10 @@ class DigitizerView extends Component<
                 </div>
                 <div className="okDigitizerControlPanel">
                     <div className="okSwitchContainer">
-                        <Switch.Root 
-                            className="okSwitchRoot" 
-                            checked={this.state.isUpdateTimerEnabled} 
-                            onCheckedChange={this.OnToggleUpdateTimer.bind(this)}
+                        <Switch.Root
+                            className="okSwitchRoot"
+                            checked={this.props.continuousEnabled}
+                            onCheckedChange={(checked) => this.props.onContinuousChange(checked)}
                             disabled={this.state.isOperationPending}
                         >
                             <Switch.Thumb className="okSwitchThumb" />
@@ -147,14 +115,14 @@ class DigitizerView extends Component<
                     </div>
                     <button
                         className="okButton"
-                        onMouseDown={this.UpdateSampleChannels.bind(this)}
+                        onMouseDown={() => this.props.onCaptureOnce()}
                         disabled={this.state.isOperationPending}
                     >
                         Capture
                     </button>
                     <button
                         className="okButton"
-                        onMouseDown={this.OnReset.bind(this)}
+                        onMouseDown={() => this.props.onReset()}
                         disabled={this.state.isOperationPending}
                     >
                         Reset
@@ -164,81 +132,10 @@ class DigitizerView extends Component<
         );
     }
 
-    /**
-     * Event handler for the Resetting.
-     * @returns Promise that resolves when the Digitizer has been reset.
-     */
-    private async OnReset(): Promise<void> {
-        await this.WorkQueue.post(async () => {
-            await this.props.driver.Reset();
-        });
-
-        // Start the periodic update timer if it is not already running.
-        if (!this.state.isUpdateTimerEnabled) {
-            this.OnToggleUpdateTimer(true);
-        }
-    }
-
-    /**
-     * Event handler for the Starting and Stoping the periodic update timer.
-     * @param state - New state of the ToggleSwitch.
-     */
-    private OnToggleUpdateTimer(checked: boolean) {
-        this.setState({ isUpdateTimerEnabled: checked });
-    }
-
-    /**
-     * Loop that periodically reads and stores samples from the Digitizer.
-     */
-    private async UpdateSampleChannelsLoop(): Promise<void> {
-        const start: number = performance.now();
-
-        await this.UpdateSampleChannels();
-
-        const elapsed: number = performance.now() - start;
-
-        if (this.state.isUpdateTimerEnabled) {
-            const delay: number = this.props.updatePeriodMilliseconds - elapsed;
-
-            setTimeout(
-                async () => {
-                    await this.UpdateSampleChannelsLoop();
-                },
-                delay > 10 ? delay : 10
-            );
-        }
-    }
-
-    /**
-     * Reads samples from the Digitizer and stores them.
-     * @returns Promise that resolves when the new samples have been retrieved and stored.
-     */
-    private async UpdateSampleChannels(): Promise<void> {
-        await this.WorkQueue.post(async () => {
-            try {
-                await this.props.driver.ReadSamples(this._SampleChannels);
-            }
-            catch(error) {
-                console.error(`Failed to Read Samples from Digitizer: \n${error}`);
-            }
-        });
-
-        return this.props.onSampleChannelsUpdate(this._SampleChannels);
-    }
-
-    /**
-     * Event handler for channel checkbox state changes.
-     * @param channelIndex - Index of the channel (0 for Channel 1, 1 for Channel 2).
-     * @param checked - New checked state.
-     */
     private handleChannelCheckChange(channelIndex: number, checked: boolean | 'indeterminate'): void {
-        this.props.channelEnableStateChange(channelIndex, checked);
+        this.props.onChannelEnableStateChange(channelIndex, checked === true);
     }
 
-    /**
-     * Event handler used to monitor the state of the Digitizer.
-     * @param args - Event arguments detailing the state transition.
-     */
     private OnDigitizerStateChange(args: DigitizerStateChangeEventArgs): void {
         this.setState({
             isOperationPending:

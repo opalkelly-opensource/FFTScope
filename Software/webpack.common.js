@@ -13,6 +13,7 @@ module.exports = {
     new CopyWebpackPlugin({
       patterns: [
         { from: 'frontpanel-app.json', to: 'frontpanel-app.json' },
+        { from: 'mcp.json', to: 'mcp.json' },
         { from: 'APP-INFO.md', to: 'assets/text' },
         { from: 'assets/images/fftscope-app-logo.svg', to: 'assets/images' },
         { from: 'assets/bitfiles', to: 'assets/bitfiles' }

@@ -1,7 +1,7 @@
 {
     "appGuid": "531DFF11-CC9B-4158-A787-B27B4B9A9042",
     "name": "FFTScope",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "author": "Opal Kelly Incorporated",
     "summary": "FFT-based waveform generator, oscilloscope, and spectrum analyzer demonstration instruments",
     "description": "FFT-based waveform generator, oscilloscope, and spectrum analyzer demonstration instruments",
@@ -9,6 +9,15 @@
     "deviceBindings": [
         { "name": "FFTScope Device", "description": "FFTScope Device" }
     ],
+    "permissions": {
+        "mcp": {
+            "bindings": true,
+            "script": true
+        }
+    },
+    "mcp": {
+        "descriptor": "mcp.json"
+    },
     "compatibleDevices": [
         "XEM8320-AU25P",
         "SZG-HUB1450-AU10P"

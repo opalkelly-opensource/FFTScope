@@ -47,6 +47,8 @@ Plots FFT magnitude versus frequency (MHz) for both ADC channels.
 
 ## Version History
 
+* 1.2.0
+  * Added Frontpanel MCP Support
 * 1.1.1
   * Updated FFTScope app icon
   * Updated FFTScope to use new packaging script
