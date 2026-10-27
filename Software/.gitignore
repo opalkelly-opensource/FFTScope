@@ -22,8 +22,3 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# Local registry override (typically pins @opalkelly scope to public
-# npm for devs whose machines have it globally scoped elsewhere). Keep
-# it a local-only file — don't commit.
-.npmrc

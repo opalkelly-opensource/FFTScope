@@ -1,16 +1,20 @@
 /**
- * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ * Copyright (c) 2024-2026 Opal Kelly Incorporated
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
+/* eslint-disable no-loss-of-precision */
+// The generated coefficients below carry more digits than a double can
+// represent; the runtime rounding is the intended value.
+
 const LUT_SIZE = 256;
 
 /**
- * Magma colormap — 256-entry RGB lookup table (Uint8), laid out as R,G,B,R,G,B,...
- * Built from a 7th-order polynomial approximation of matplotlib's magma at module load.
- * Polynomial coefficients: https://observablehq.com/@flimsyhat/webgl-color-maps
+ * Magma colormap. 256-entry RGB lookup table (Uint8), laid out as R,G,B,R,G,B,...
+ * Built from a 7th-order polynomial approximation of matplotlib's magma.
+ * Coefficients: https://observablehq.com/@flimsyhat/webgl-color-maps
  */
 export const MagmaLUT: Uint8Array = (function buildMagmaLUT(): Uint8Array {
     const lut = new Uint8Array(LUT_SIZE * 3);
@@ -36,5 +40,3 @@ export const MagmaLUT: Uint8Array = (function buildMagmaLUT(): Uint8Array {
 
     return lut;
 })();
-
-export const MagmaLUTSize = LUT_SIZE;

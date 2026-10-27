@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ * Copyright (c) 2024-2026 Opal Kelly Incorporated
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -11,525 +11,585 @@ import * as AlertDialog from "@radix-ui/react-alert-dialog";
 
 import "./App.css";
 
-import "./FPGAConfigurationFiles";
-
 import {
     IDeviceManager,
     IDevice,
     IDeviceInfo,
     IFPGAConfiguration,
+    IFPGADataPortAXI,
     WorkQueue,
     DataProgressCallback,
-    ByteCount,
-    IEventSubscription,
-    DeviceInterfaceType
+    IEventSubscription
 } from "@opalkelly/frontpanel-platform-api";
 
-import FFTScopeView from "./FFTScopeView";
-
-import { FrequencyVectorState } from "./WaveformGeneratorView";
-import type SpectrumAnalyzerView from "./SpectrumAnalyzerView";
-import type TimeDomainView from "./TimeDomainView";
-import type { SpectrumDisplayMode } from "./SpectrumAnalyzerView";
+import FFTScopeView, {
+    SPECTROGRAM_NOISE_FLOOR_MIN,
+    SPECTROGRAM_NOISE_FLOOR_MAX,
+    SPECTROGRAM_NOISE_FLOOR_DEFAULT,
+    SPECTROGRAM_GAMMA_STOPS_MIN,
+    SPECTROGRAM_GAMMA_STOPS_MAX,
+    SPECTROGRAM_GAMMA_STOPS_DEFAULT
+} from "./FFTScopeView";
+import { SpectrumDisplayMode } from "./SpectrumView";
 
 import FrontPanelLogo from "../assets/images/logo512.png";
 
-import { DACProductType, ProductModelToDACType } from "./DACProductConfig";
-import { ADCProductType, ProductModelToADCType, ADCChipTable, BitfileTable, ADCProductConfig } from "./ADCProductConfig";
 import FFTConfiguration from "./FFTConfiguration";
+import { resolveADCVariant, DEFAULT_ADC_VARIANT } from "./ADCVariants";
 
-import { WaveformGeneratorDriver } from "./WaveformGeneratorDriver";
-import { DigitizerDriver } from "./DigitizerDriver";
-import { SpectrumAnalyzerDriver } from "./SpectrumAnalyzerDriver";
+import { DACDriver } from "./DACDriver";
+import { ADCDriver, ADCState } from "./ADCDriver";
+import { CaptureSequencer } from "./CaptureSequencer";
 
-import { ClassicWaveformGeneratorDriver } from "./ClassicWaveformGeneratorDriver";
-import { ClassicDigitizerDriver } from "./ClassicDigitizerDriver";
-import { ClassicSpectrumAnalyzerDriver } from "./ClassicSpectrumAnalyzerDriver";
+import {
+    WaveformGenerator,
+    FrequencyVector,
+    FrequencyVectorState
+} from "./WaveformGenerator";
 
-import { AXIWaveformGeneratorDriver } from "./AXIWaveformGeneratorDriver";
-import { AXIDigitizerDriver } from "./AXIDigitizerDriver";
-import { AXISpectrumAnalyzerDriver } from "./AXISpectrumAnalyzerDriver";
+import { DatapathCtrlDriver } from "./DatapathCtrlDriver";
 
-import { WaveformGeneratorAdapter, FrequencyVector } from "./WaveformGeneratorAdapter";
+import { getMCP } from "./types/mcp";
+import { registerMcpBindings, WavegenState, DisplayState } from "./MCPBindings";
 
-import { registerMcpBindings } from "./MCPBindings";
+interface ErrorProperties { title: string, description: string, solution: string }
 
 interface FFTScopeContext {
-    adcConfig: ADCProductConfig;
-    waveformGeneratorDriver?: WaveformGeneratorDriver;
-    digitizerDriver?: DigitizerDriver;
-    spectrumAnalyzerDriver?: SpectrumAnalyzerDriver;
+    adcDriver: ADCDriver;
+    captureSequencer: CaptureSequencer;
+    dacDriver: DACDriver;
+    waveformGenerator: WaveformGenerator;
+    datapathCtrl: DatapathCtrlDriver;
+    spectrumConfiguration: FFTConfiguration;
+    waveformConfiguration: FFTConfiguration;
+    adcPresent: boolean;
+    dacPresent: boolean;
 }
 
-type PeripheralTopology =
-    | { kind: "complete"; dac: DACProductType; adc: ADCProductType }
-    | { kind: "dacOnly";  dac: DACProductType }
-    | { kind: "adcOnly";  adc: ADCProductType }
-    | { kind: "unsafe";   port: "A" | "B"; detectedModel: string }
-    | { kind: "missing" };
+const ADC_PRODUCT_MODEL_KEY = "SYZYGY1_PRODUCT_MODEL"; // Port B
 
-type SafeTopology = Exclude<PeripheralTopology, { kind: "unsafe" | "missing" }>;
+const isDacProductModel = (modelName: string | undefined): boolean =>
+    modelName !== undefined && modelName.toUpperCase().startsWith("SZG-DAC");
 
-interface ErrorProperties { title: string, description: string, details: string, solution: string }
+const DAC_SAMPLE_CLK = 125_000_000;
+const SPECTRUM_FFT_LENGTH = 2048;
+const DAC_IFFT_LENGTH = 2048;         // complex bins
+const SAMPLE_COUNT = 2048;            // per channel, the full td_capbuf record
+const ADC_FULL_SCALE = 32768;
+const ADC_BIT_WIDTH = 16;             // both pods MSB-align into signed 16-bit
+const FFT_OUTPUT_PEAK = (SPECTRUM_FFT_LENGTH / 2) * ADC_FULL_SCALE; // dBFS reference
+const SPECTRUM_DBFS_FLOOR = -200;     // reported for zero-magnitude bins
+
+const SLOT_COUNT = 8;                 // number of wavegen software slots
+const CHANNEL_COUNT = 2;
+
+const DEFAULT_DISPLAY_STATE: DisplayState = {
+    channelEnableStates: [true, true],
+    spectrumMode: "spectrum",
+    spectrogramNoiseFloor: SPECTROGRAM_NOISE_FLOOR_DEFAULT,
+    spectrogramGammaStops: SPECTROGRAM_GAMMA_STOPS_DEFAULT,
+    isContinuous: true
+};
+
+const clamp = (value: number, min: number, max: number): number =>
+    Math.min(max, Math.max(min, value));
+
+const toDbfs = (magnitudes: Float64Array): number[] =>
+    Array.from(magnitudes, (magnitude) =>
+        magnitude > 0 ? 20.0 * Math.log10(magnitude / FFT_OUTPUT_PEAK) : SPECTRUM_DBFS_FLOOR
+    );
+const DEFAULT_WAVEGEN_VECTORS: FrequencyVectorState[] = [
+    { isEnabled: true, vector: { bin: 68, amplitude: -24 } },
+    { isEnabled: true, vector: { bin: 2, amplitude: -7 } },
+    { isEnabled: true, vector: { bin: 18, amplitude: -28 } },
+    ...Array.from({ length: SLOT_COUNT - 3 }, () => ({
+        isEnabled: false,
+        vector: { bin: 1, amplitude: -120 }
+    }))
+];
+
+function makeResetVectors(): FrequencyVectorState[] {
+    return Array.from({ length: SLOT_COUNT }, () => ({
+        isEnabled: false,
+        vector: { bin: 1, amplitude: -120 }
+    }));
+}
+
+function cloneVectors(vectors: FrequencyVectorState[]): FrequencyVectorState[] {
+    return vectors.map((slot) => ({
+        isEnabled: slot.isEnabled,
+        vector: {
+            bin: slot.vector.bin,
+            amplitude: slot.vector.amplitude
+        }
+    }));
+}
 
 const DeviceWorkQueue = new WorkQueue();
-
-const SAMPLE_COUNT = 1024;
-const FFT_LENGTH = 1024;
-const DIGITIZER_UPDATE_PERIOD_MS = 35;
-const CHANNEL_COLORS = ["#EF2424", "#2E7CE9"];
-
-const INITIAL_VECTORS: FrequencyVectorState[] = [
-    { isEnabled: true,  vector: { bin: 68, amplitude: -24 } },
-    { isEnabled: true,  vector: { bin: 2,  amplitude: -7  } },
-    { isEnabled: true,  vector: { bin: 18, amplitude: -28 } },
-    { isEnabled: false, vector: { bin: 1,  amplitude: 0   } },
-    { isEnabled: false, vector: { bin: 1,  amplitude: 0   } },
-    { isEnabled: false, vector: { bin: 1,  amplitude: 0   } },
-    { isEnabled: false, vector: { bin: 1,  amplitude: 0   } },
-    { isEnabled: false, vector: { bin: 1,  amplitude: 0   } }
-];
 
 function App() {
     const [fftScopeContext, setFFTScopeContext] = React.useState<FFTScopeContext>();
     const [error, setError] = React.useState<ErrorProperties>();
 
-    // ──────────────────────────────────────────────────────────────────
-    // Lifted state — every slice that an MCP write tool mutates lives
-    // here, so UI controls and MCP handlers route through one shared
-    // function per action and can never drift out of sync. See README's
-    // "Sharing state between UI and MCP handlers" section.
-    // ──────────────────────────────────────────────────────────────────
-
-    const [frequencyVectors, setFrequencyVectors] = React.useState<FrequencyVectorState[]>(INITIAL_VECTORS);
-    const [autoscaleEnabled, setAutoscaleEnabledState] = React.useState<boolean>(true);
-    const [amplitudeScaleFactor, setAmplitudeScaleFactor] = React.useState<number>(1.0);
-
-    const [channelEnableStates, setChannelEnableStates] = React.useState<boolean[]>([true, true]);
-    const [continuousEnabled, setContinuousEnabledState] = React.useState<boolean>(true);
-
-    const [spectrumMode, setSpectrumModeState] = React.useState<SpectrumDisplayMode>("spectrum");
-    const [spectrogramNoiseFloor, setSpectrogramNoiseFloorState] = React.useState<number>(-130);
-    const [spectrogramGammaStops, setSpectrogramGammaStopsState] = React.useState<number>(0);
-
-    // ──────────────────────────────────────────────────────────────────
-    // Mirrors of state into refs. Shared handlers below are
-    // useCallback(empty-deps) so they keep stable identities for the
-    // MCP binding layer; reading current state through refs lets them
-    // see the latest value at invocation time without re-registering.
-    // ──────────────────────────────────────────────────────────────────
-
-    // React-mirror ref (last value committed via setFrequencyVectors).
-    // Used by UI-level callbacks that need to read "the slot the user
-    // is editing right now."
-    const vectorsRef = React.useRef<FrequencyVectorState[]>(INITIAL_VECTORS);
-    React.useEffect(() => { vectorsRef.current = frequencyVectors; }, [frequencyVectors]);
-
-    // Gateware-side source-of-truth, mutated *inside* DeviceWorkQueue
-    // tasks only. Consecutive `applyVectorEdit` calls reconcile against
-    // this ref rather than `vectorsRef`, which avoids a stale-`previous`
-    // race when two MCP write calls arrive faster than React commits.
-    const committedVectorsRef = React.useRef<FrequencyVectorState[]>(
-        INITIAL_VECTORS.map((slot) => ({ isEnabled: slot.isEnabled, vector: { ...slot.vector } }))
+    const wavegenVectorsRef = React.useRef<FrequencyVectorState[]>(
+        cloneVectors(DEFAULT_WAVEGEN_VECTORS)
     );
-
-    const autoscaleEnabledRef = React.useRef<boolean>(autoscaleEnabled);
-    React.useEffect(() => { autoscaleEnabledRef.current = autoscaleEnabled; }, [autoscaleEnabled]);
-
-    const channelEnableStatesRef = React.useRef<boolean[]>(channelEnableStates);
-    React.useEffect(() => { channelEnableStatesRef.current = channelEnableStates; }, [channelEnableStates]);
-
-    const continuousEnabledRef = React.useRef<boolean>(continuousEnabled);
-    React.useEffect(() => { continuousEnabledRef.current = continuousEnabled; }, [continuousEnabled]);
-
-    const spectrumModeRef = React.useRef<SpectrumDisplayMode>(spectrumMode);
-    React.useEffect(() => { spectrumModeRef.current = spectrumMode; }, [spectrumMode]);
-
-    const spectrogramNoiseFloorRef = React.useRef<number>(spectrogramNoiseFloor);
-    React.useEffect(() => { spectrogramNoiseFloorRef.current = spectrogramNoiseFloor; }, [spectrogramNoiseFloor]);
-
-    const spectrogramGammaStopsRef = React.useRef<number>(spectrogramGammaStops);
-    React.useEffect(() => { spectrogramGammaStopsRef.current = spectrogramGammaStops; }, [spectrogramGammaStops]);
-
-    const amplitudeScaleFactorRef = React.useRef<number>(amplitudeScaleFactor);
-    React.useEffect(() => { amplitudeScaleFactorRef.current = amplitudeScaleFactor; }, [amplitudeScaleFactor]);
-
-    // Driver refs — written from initializeDevice without going through
-    // React state so the shared handlers can read whatever driver is
-    // currently bound. Set to undefined on disconnect so handlers throw
-    // a useful error rather than silently no-op.
-    const waveformDriverRef = React.useRef<WaveformGeneratorDriver | undefined>(undefined);
-    const digitizerDriverRef = React.useRef<DigitizerDriver | undefined>(undefined);
-    const spectrumDriverRef = React.useRef<SpectrumAnalyzerDriver | undefined>(undefined);
-
-    // Adapter that mediates between the dBFS amplitude / bin shape
-    // exposed by the UI and MCP layer and the IFFT bin registers the
-    // gateware understands. Created in initializeDevice once the
-    // waveform driver is in ResetComplete; cleared on disconnect.
-    const waveformAdapterRef = React.useRef<WaveformGeneratorAdapter | undefined>(undefined);
-
-    // Buffers shared with the views. The digitizer view's capture loop
-    // writes into `digitizerSampleBuffers`; the spectrum view's
-    // ComputeSpectrum writes into `spectrumOutputBuffers`. The MCP
-    // `digitizer_read_samples` and `spectrum_read_latest` tools read
-    // from these same buffers — serializing reads against captures via
-    // the WorkQueue means the snapshot is always coherent.
-    const digitizerSampleBuffersRef = React.useRef<Int16Array[]>([
-        new Int16Array(SAMPLE_COUNT),
-        new Int16Array(SAMPLE_COUNT)
-    ]);
-    const spectrumOutputBuffersRef = React.useRef<Float64Array[]>([
-        new Float64Array(FFT_LENGTH),
-        new Float64Array(FFT_LENGTH)
-    ]);
-
-    // Chip-specific FFT full-scale peak — used by the
-    // `spectrum_read_latest` MCP handler to convert raw magnitudes to
-    // dBFS. Set when initializeDevice resolves the ADC config; left at
-    // 1 (a sentinel that produces 0 dBFS) until then.
-    const fftOutputPeakRef = React.useRef<number>(1);
-
-    // FPGA-supplied sample rate (DAC and ADC share the same clock in
-    // FFTScope's bitfiles) and IFFT/FFT length. Exposed via the MCP
-    // sample-rate getters so scripts can convert bin indices ↔ Hz.
-    const sampleRateHzRef = React.useRef<number>(0);
-    const fftLengthRef = React.useRef<number>(FFT_LENGTH);
-
-    // Refs to child views for downstream chart refreshes after a
-    // capture. The spectrum view is also the source-of-truth for the
-    // most recent FFT magnitudes — its UpdateChartData fills the
-    // spectrum output buffers in place.
-    const spectrumViewRef = React.useRef<SpectrumAnalyzerView>(null);
-    const timeDomainViewRef = React.useRef<TimeDomainView>(null);
-
-    // ──────────────────────────────────────────────────────────────────
-    // Shared handlers — every UI control and every state-mutating MCP
-    // tool calls one of these. Each posts to DeviceWorkQueue for
-    // gateware I/O, mutates React state, and (for waveform vectors)
-    // updates the adapter's internal map. UI and MCP cannot drift on
-    // the success path because there is exactly one place per action
-    // where the gateware and React state are updated.
-    // ──────────────────────────────────────────────────────────────────
-
-    /**
-     * Push the saved vectors to the gateware after a fresh init/reset.
-     * Caller must already be inside a DeviceWorkQueue task (this
-     * function does not post).
-     */
-    const seedAdapterFromVectors = React.useCallback(
-        async (adapter: WaveformGeneratorAdapter): Promise<number> => {
-            const slots = committedVectorsRef.current;
-            slots
-                .filter((slot) => slot.isEnabled)
-                .forEach((slot) => adapter.AddFrequencyVector(slot.vector));
-            return adapter.UpdateFrequencyBins(autoscaleEnabledRef.current);
-        },
-        []
+    const wavegenAutoscaleRef = React.useRef<boolean>(true);
+    const [wavegenVectors, setWavegenVectors] = React.useState<FrequencyVectorState[]>(
+        wavegenVectorsRef.current
     );
+    const [isAutoScaleEnabled, setIsAutoScaleEnabled] = React.useState(true);
+    const [amplitudeScaleFactor, setAmplitudeScaleFactor] = React.useState(1.0);
 
-    const setWaveformInitialize = React.useCallback(async (): Promise<void> => {
-        const driver = waveformDriverRef.current;
-        if (driver === undefined) {
-            throw new Error("Waveform Generator driver not available (device disconnected?)");
-        }
-        await DeviceWorkQueue.post(async () => {
-            await driver.Initialize();
-            await driver.Reset();
-            const adapter = new WaveformGeneratorAdapter(driver);
-            const scale = await seedAdapterFromVectors(adapter);
-            waveformAdapterRef.current = adapter;
-            setAmplitudeScaleFactor(scale);
-        });
-    }, [seedAdapterFromVectors]);
+    const displayStateRef = React.useRef<DisplayState>(DEFAULT_DISPLAY_STATE);
+    const [displayState, setDisplayState] = React.useState<DisplayState>(DEFAULT_DISPLAY_STATE);
 
-    const setWaveformReset = React.useCallback(async (): Promise<void> => {
-        const driver = waveformDriverRef.current;
-        const adapter = waveformAdapterRef.current;
-        if (driver === undefined || adapter === undefined) {
-            throw new Error("Waveform Generator not available (device disconnected?)");
-        }
-        const cleared: FrequencyVectorState[] = Array.from(
-            { length: INITIAL_VECTORS.length },
-            () => ({ isEnabled: false, vector: { bin: 0, amplitude: 0 } })
-        );
-        await DeviceWorkQueue.post(async () => {
-            await adapter.Reset();
-            committedVectorsRef.current = cleared;
-        });
-        setFrequencyVectors(cleared);
-        setAmplitudeScaleFactor(1.0);
-    }, []);
+    const fftScopeViewRef = React.useRef<FFTScopeView>(null);
 
-    const setAutoscale = React.useCallback(async (enabled: boolean): Promise<void> => {
-        const adapter = waveformAdapterRef.current;
-        if (adapter === undefined) {
-            throw new Error("Waveform Generator not available (device disconnected?)");
-        }
-        let newScale = amplitudeScaleFactorRef.current;
-        await DeviceWorkQueue.post(async () => {
-            newScale = await adapter.UpdateFrequencyBins(enabled);
-        });
-        setAutoscaleEnabledState(enabled);
-        setAmplitudeScaleFactor(newScale);
-    }, []);
+    const contextRef = React.useRef<FFTScopeContext | undefined>(undefined);
+    React.useEffect(() => {
+        contextRef.current = fftScopeContext;
+    }, [fftScopeContext]);
 
-    /**
-     * Atomic vector slot edit: the popover's separate "change vector"
-     * and "toggle enable" interactions, plus the MCP `waveform_set_vector`
-     * tool, all funnel through this. Reconciles the previous slot state
-     * (was-enabled, was-vector) with the new slot state (will-enabled,
-     * will-vector) by removing the previous vector from the adapter if
-     * it was contributing and adding the new one if the new state is
-     * enabled.
-     *
-     * The "previous" slot state is read from `committedVectorsRef`
-     * inside the WorkQueue task — not from the React-mirror ref —
-     * because two consecutive MCP calls can arrive faster than React
-     * commits, and the queue is the only thing that serializes against
-     * the gateware.
-     */
-    const applyVectorEdit = React.useCallback(
-        async (vectorId: number, newVector: FrequencyVector, newEnabled: boolean): Promise<void> => {
-            const adapter = waveformAdapterRef.current;
-            if (adapter === undefined) {
-                throw new Error("Waveform Generator not available (device disconnected?)");
-            }
-
-            let newScale = amplitudeScaleFactorRef.current;
+    /** Push the given vectors and autoscale setting to the hardware. */
+    const applyWavegen = React.useCallback(
+        async (vectors: FrequencyVectorState[], autoscale: boolean): Promise<number> => {
+            let factor = 1.0;
             await DeviceWorkQueue.post(async () => {
-                const previous = committedVectorsRef.current[vectorId];
-                if (previous === undefined) {
-                    throw new Error(`Invalid vector_id: ${vectorId}`);
+                const ctx = contextRef.current;
+                if (ctx === undefined) throw new Error("Device not ready");
+                if (!ctx.dacPresent) {
+                    throw new Error("Waveform generator unavailable: no DAC connected (Port A)");
                 }
-                if (previous.isEnabled) {
-                    await adapter.RemoveFrequencyVector(previous.vector);
-                }
-                if (newEnabled) {
-                    adapter.AddFrequencyVector(newVector);
-                }
-                newScale = await adapter.UpdateFrequencyBins(autoscaleEnabledRef.current);
-                committedVectorsRef.current[vectorId] = {
-                    isEnabled: newEnabled,
-                    vector: { ...newVector }
-                };
-            });
 
-            setFrequencyVectors((prev) => {
-                const next = prev.slice();
-                next[vectorId] = { isEnabled: newEnabled, vector: newVector };
-                return next;
+                const enabled: FrequencyVector[] = vectors
+                    .filter((slot) => slot.isEnabled)
+                    .map((slot) => slot.vector);
+
+                factor = await ctx.waveformGenerator.SetVectors(enabled, autoscale);
+                setAmplitudeScaleFactor(factor);
             });
-            setAmplitudeScaleFactor(newScale);
+            return factor;
         },
         []
     );
 
-    const onVectorChange = React.useCallback(
-        (vectorId: number, vector: FrequencyVector): void => {
-            const previous = vectorsRef.current[vectorId];
-            applyVectorEdit(vectorId, vector, previous?.isEnabled ?? false).catch((error) => {
-                console.error("Vector change failed:", error);
-            });
-        },
-        [applyVectorEdit]
-    );
-
-    const onVectorEnabledChange = React.useCallback(
-        (vectorId: number, enabled: boolean): void => {
-            const previous = vectorsRef.current[vectorId];
-            if (previous === undefined) return;
-            applyVectorEdit(vectorId, previous.vector, enabled).catch((error) => {
-                console.error("Vector enable change failed:", error);
-            });
-        },
-        [applyVectorEdit]
-    );
-
-    const onChannelEnableStateChange = React.useCallback(
-        (channelIndex: number, enabled: boolean): void => {
-            setChannelEnableStates((prev) => {
-                const next = prev.slice();
-                next[channelIndex] = enabled;
-                return next;
-            });
-        },
-        []
-    );
-
-    const setContinuousEnabled = React.useCallback((enabled: boolean): void => {
-        setContinuousEnabledState(enabled);
-    }, []);
-
-    const setDigitizerReset = React.useCallback(async (): Promise<void> => {
-        const driver = digitizerDriverRef.current;
-        if (driver === undefined) {
-            throw new Error("Digitizer driver not available (device disconnected?)");
-        }
-        await DeviceWorkQueue.post(async () => {
-            await driver.Reset();
-        });
-    }, []);
-
-    /**
-     * Single sample read. Posts a ReadSamples to the WorkQueue, then
-     * synchronously hands the buffer pair to the time-domain chart
-     * and (asynchronously) to the spectrum analyzer for FFT + chart
-     * update. Both UI controls (Capture button) and MCP
-     * (`digitizer_capture_once`) call this.
-     */
-    const captureOnce = React.useCallback(async (): Promise<void> => {
-        const driver = digitizerDriverRef.current;
-        if (driver === undefined) {
-            throw new Error("Digitizer driver not available (device disconnected?)");
-        }
-        const buffers = digitizerSampleBuffersRef.current;
-        await DeviceWorkQueue.post(async () => {
-            try {
-                await driver.ReadSamples(buffers);
-            } catch (error) {
-                console.error(`Failed to Read Samples from Digitizer: \n${error}`);
+    /** Set one waveform-generator slot (vector + enable) and re-apply the spectrum. */
+    const setWavegenVector = React.useCallback(
+        async (slot: number, vector: FrequencyVector, enabled: boolean): Promise<number> => {
+            if (slot < 0 || slot >= wavegenVectorsRef.current.length) {
+                throw new Error(`Invalid slot ${slot} (0..${wavegenVectorsRef.current.length - 1})`);
             }
+            const next = cloneVectors(wavegenVectorsRef.current);
+            next[slot] = {
+                isEnabled: enabled,
+                vector: { bin: vector.bin, amplitude: vector.amplitude }
+            };
+            wavegenVectorsRef.current = next;
+            setWavegenVectors(next);
+            return applyWavegen(next, wavegenAutoscaleRef.current);
+        },
+        [applyWavegen]
+    );
+
+    /** Toggle autoscale and re-apply the spectrum with the new policy. */
+    const setWavegenAutoscale = React.useCallback(
+        async (enabled: boolean): Promise<number> => {
+            wavegenAutoscaleRef.current = enabled;
+            setIsAutoScaleEnabled(enabled);
+            return applyWavegen(wavegenVectorsRef.current, enabled);
+        },
+        [applyWavegen]
+    );
+
+    /** Reset Instrument: clear hardware spectrum and return every slot to silence. */
+    const resetWavegen = React.useCallback(async (): Promise<void> => {
+        const next = makeResetVectors();
+        wavegenVectorsRef.current = next;
+        setWavegenVectors(next);
+        await DeviceWorkQueue.post(async () => {
+            const ctx = contextRef.current;
+            if (ctx === undefined) throw new Error("Device not ready");
+            if (!ctx.dacPresent) {
+                throw new Error("Waveform generator unavailable: no DAC connected (Port A)");
+            }
+            await ctx.waveformGenerator.Reset();
+            setAmplitudeScaleFactor(1.0);
         });
-        timeDomainViewRef.current?.UpdateChartData(buffers);
-        await spectrumViewRef.current?.UpdateChartData(buffers);
     }, []);
+
+    /** Re-enable DAC playout and re-push the current slots. */
+    const initializeWavegen = React.useCallback(async (): Promise<number> => {
+        await DeviceWorkQueue.post(async () => {
+            const ctx = contextRef.current;
+            if (ctx === undefined) throw new Error("Device not ready");
+            if (!ctx.dacPresent) {
+                throw new Error("Waveform generator unavailable: no DAC connected (Port A)");
+            }
+            await ctx.dacDriver.EnablePlayback();
+        });
+        return applyWavegen(wavegenVectorsRef.current, wavegenAutoscaleRef.current);
+    }, [applyWavegen]);
+
+    /** Snapshot of the wavegen slots and the staged bin map. */
+    const getWavegenState = React.useCallback((): WavegenState => {
+        const ctx = contextRef.current;
+        const scale = ctx?.waveformGenerator.AmplitudeScaleFactor ?? 1.0;
+        return {
+            vectors: cloneVectors(wavegenVectorsRef.current).map((slot) => ({
+                ...slot,
+                freqHz: (slot.vector.bin * DAC_SAMPLE_CLK) / DAC_IFFT_LENGTH
+            })),
+            isAutoScaleEnabled: wavegenAutoscaleRef.current,
+            amplitudeScaleFactor: scale,
+            amplitudeScaleDb: 20.0 * Math.log10(scale),
+            binMap: ctx?.waveformGenerator.GetBinMap() ?? []
+        };
+    }, []);
+
+    const getWavegenSampleRate = React.useCallback(() => ({
+        sampleRate: DAC_SAMPLE_CLK,
+        ifftLength: DAC_IFFT_LENGTH,
+        binSpacingHz: DAC_SAMPLE_CLK / DAC_IFFT_LENGTH
+    }), []);
+
+    const getDigitizerSampleRate = React.useCallback(() => {
+        const ctx = contextRef.current;
+        if (ctx === undefined) throw new Error("Device not ready");
+        return {
+            sampleRate: ctx.spectrumConfiguration.SampleRate,
+            fftLength: SPECTRUM_FFT_LENGTH,
+            binSpacingHz: ctx.spectrumConfiguration.GetBinFrequency(1)
+        };
+    }, []);
+
+    const updateDisplayState = React.useCallback((patch: Partial<DisplayState>): void => {
+        displayStateRef.current = { ...displayStateRef.current, ...patch };
+        setDisplayState(displayStateRef.current);
+    }, []);
+
+    const getDisplayState = React.useCallback((): DisplayState => displayStateRef.current, []);
+
+    const setChannelEnabled = React.useCallback((channelIndex: number, enabled: boolean): void => {
+        if (channelIndex < 0 || channelIndex >= CHANNEL_COUNT) {
+            throw new Error(`Invalid channel ${channelIndex + 1} (1..${CHANNEL_COUNT})`);
+        }
+        const channelEnableStates = [...displayStateRef.current.channelEnableStates];
+        channelEnableStates[channelIndex] = enabled;
+        updateDisplayState({ channelEnableStates });
+    }, [updateDisplayState]);
 
     const setSpectrumMode = React.useCallback((mode: SpectrumDisplayMode): void => {
-        setSpectrumModeState(mode);
-    }, []);
+        updateDisplayState({ spectrumMode: mode });
+    }, [updateDisplayState]);
 
-    const setSpectrogramNoiseFloor = React.useCallback((value: number): void => {
-        setSpectrogramNoiseFloorState(value);
-    }, []);
+    const setSpectrogramNoiseFloor = React.useCallback((floorDbfs: number): void => {
+        updateDisplayState({
+            spectrogramNoiseFloor: clamp(floorDbfs, SPECTROGRAM_NOISE_FLOOR_MIN, SPECTROGRAM_NOISE_FLOOR_MAX)
+        });
+    }, [updateDisplayState]);
 
-    const setSpectrogramGammaStops = React.useCallback((value: number): void => {
-        setSpectrogramGammaStopsState(value);
-    }, []);
+    const setSpectrogramGammaStops = React.useCallback((stops: number): void => {
+        updateDisplayState({
+            spectrogramGammaStops: clamp(stops, SPECTROGRAM_GAMMA_STOPS_MIN, SPECTROGRAM_GAMMA_STOPS_MAX)
+        });
+    }, [updateDisplayState]);
 
-    // Continuous-capture loop. Reads driven by the lifted
-    // `continuousEnabled` state, so flipping it from either the UI
-    // toggle or the MCP `digitizer_set_continuous` tool starts/stops
-    // the loop the same way.
-    React.useEffect(() => {
-        if (!continuousEnabled) return;
-        if (fftScopeContext?.digitizerDriver === undefined) return;
+    const setContinuous = React.useCallback((enabled: boolean): void => {
+        updateDisplayState({ isContinuous: enabled });
+    }, [updateDisplayState]);
 
-        let active = true;
-        const loop = async () => {
-            if (!active) return;
-            const start = performance.now();
-            await captureOnce();
-            const elapsed = performance.now() - start;
-            if (active) {
-                const delay = Math.max(DIGITIZER_UPDATE_PERIOD_MS - elapsed, 10);
-                setTimeout(loop, delay);
+    /**
+     * Realign the ADC, then resume continuous capture.
+     * @returns True when the ADC reports ready.
+     */
+    const resetDigitizer = React.useCallback(async (): Promise<boolean> => {
+        let isReady = false;
+        await DeviceWorkQueue.post(async () => {
+            const ctx = contextRef.current;
+            if (ctx === undefined) throw new Error("Device not ready");
+            if (!ctx.adcPresent) {
+                throw new Error("Acquisition unavailable: no ADC connected (Port B)");
             }
+            isReady = await ctx.captureSequencer.Reset();
+        });
+        setContinuous(true);
+        return isReady;
+    }, [setContinuous]);
+
+    /**
+     * Capture one ADC frame for both channels, return the raw MSB-aligned signed
+     * 16-bit samples.
+     * @param refreshDisplays - If true, also plot the frame and refresh the spectrum.
+     */
+    const captureSamples = React.useCallback(async (refreshDisplays: boolean): Promise<unknown> => {
+        const ch1 = new Int16Array(SAMPLE_COUNT);
+        const ch2 = new Int16Array(SAMPLE_COUNT);
+        let sampleRate = 0;
+        await DeviceWorkQueue.post(async () => {
+            const ctx = contextRef.current;
+            if (ctx === undefined) throw new Error("Device not ready");
+            if (!ctx.adcPresent) {
+                throw new Error("Acquisition unavailable: no ADC connected (Port B)");
+            }
+            // ReadSamples requires ResetComplete.
+            if (ctx.captureSequencer.State !== ADCState.ResetComplete) {
+                await ctx.captureSequencer.Reset();
+            }
+            const ok = await ctx.captureSequencer.ReadSamples([ch1, ch2]);
+            if (!ok) throw new Error("ADC ReadSamples failed");
+            sampleRate = ctx.spectrumConfiguration.SampleRate;
+        });
+        if (refreshDisplays) {
+            await fftScopeViewRef.current?.OnSampleChannelsUpdate([ch1, ch2]);
+        }
+        return {
+            sampleRate,
+            sampleCount: SAMPLE_COUNT,
+            adcBitWidth: ADC_BIT_WIDTH,
+            ch1: Array.from(ch1),
+            ch2: Array.from(ch2)
         };
-        loop();
-        return () => { active = false; };
-    }, [continuousEnabled, fftScopeContext?.digitizerDriver, captureOnce]);
+    }, []);
 
-    // Mirror channel-enable changes into the time-domain chart. The
-    // spectrum view tracks this via its own componentDidUpdate.
-    React.useEffect(() => {
-        timeDomainViewRef.current?.UpdateChannelEnableStates(channelEnableStates);
-    }, [channelEnableStates]);
-
-    React.useEffect(() => {
-        const loadFPGAConfiguration = async (filename: string, fpgaConfiguration: IFPGAConfiguration): Promise<void> => {
-            let response;
-
-            try {
-                response = await fetch("frontpanel://localhost/assets/bitfiles/" + filename);
+    /** Capture one hardware FFT frame and return both channels in dBFS. */
+    const readSpectrum = React.useCallback(async (): Promise<unknown> => {
+        let result: unknown;
+        await DeviceWorkQueue.post(async () => {
+            const ctx = contextRef.current;
+            if (ctx === undefined) throw new Error("Device not ready");
+            if (!ctx.adcPresent) {
+                throw new Error("Acquisition unavailable: no ADC connected (Port B)");
             }
-            catch (error) {
-                throw new Error(`Failed to retrieve ${filename}`);
+            if (ctx.captureSequencer.State !== ADCState.ResetComplete) {
+                await ctx.captureSequencer.Reset();
+            }
+            // The ADC FIFO overflows between captures, so the first frame after an
+            // input change is one frame stale; capture and discard one first.
+            await ctx.captureSequencer.ReadSpectrum();
+            const { mag1, mag2 } = await ctx.captureSequencer.ReadSpectrum();
+            result = {
+                sampleRate: ctx.spectrumConfiguration.SampleRate,
+                fftLength: SPECTRUM_FFT_LENGTH,
+                binCount: ctx.captureSequencer.BinCount,
+                binSpacingHz: ctx.spectrumConfiguration.GetBinFrequency(1),
+                ch1: toDbfs(mag1),
+                ch2: toDbfs(mag2)
+            };
+        });
+        return result;
+    }, []);
+
+    /** Read and decode STATUS from datapath_ctrl, syzygy_adc and syzygy_dac. */
+    const readStatus = React.useCallback(async () => {
+        let result: unknown;
+        await DeviceWorkQueue.post(async () => {
+            const ctx = contextRef.current;
+            if (ctx === undefined) throw new Error("Device not ready");
+            const ctrl = await ctx.datapathCtrl.ReadStatus();
+            const adc = await ctx.adcDriver.ReadStatus();
+            const dac = await ctx.dacDriver.ReadStatus();
+            result = {
+                raw: ctrl.raw,
+                adcStatus: adc.raw,
+                dacStatus: dac.raw,
+                captureDone: ctrl.captureDone,
+                playReady: ctrl.playReady,
+                adcReady: adc.ready,
+                captureClkAlive: adc.captureClkAlive,
+                alignDone: adc.alignDone,
+                alignFail: adc.alignFail,
+                fifoOverflow: adc.fifoOverflow,
+                frameError: adc.frameError,
+                dacReady: dac.ready,
+                fifoUnderflow: dac.fifoUnderflow
+            };
+        });
+        return result;
+    }, []);
+
+    /** Read and decode CONFIG. */
+    const readConfig = React.useCallback(async () => {
+        let result: unknown;
+        await DeviceWorkQueue.post(async () => {
+            const ctx = contextRef.current;
+            if (ctx === undefined) throw new Error("Device not ready");
+            result = await ctx.datapathCtrl.ReadConfig();
+        });
+        return result;
+    }, []);
+
+    const mcpRegisteredRef = React.useRef(false);
+    React.useEffect(() => {
+        if (fftScopeContext === undefined || mcpRegisteredRef.current) return;
+        const mcp = getMCP();
+        if (mcp === undefined) return; // MCP not granted
+        mcpRegisteredRef.current = true;
+        registerMcpBindings(mcp, DeviceWorkQueue, {
+            initializeWavegen,
+            setWavegenVector,
+            setWavegenAutoscale,
+            resetWavegen,
+            getWavegenState,
+            getWavegenSampleRate,
+            resetDigitizer,
+            captureSamples,
+            getDigitizerSampleRate,
+            setChannelEnabled,
+            setContinuous,
+            setSpectrumMode,
+            setSpectrogramNoiseFloor,
+            setSpectrogramGammaStops,
+            getDisplayState,
+            readSpectrum,
+            readStatus,
+            readConfig
+        });
+    }, [
+        fftScopeContext,
+        initializeWavegen,
+        setWavegenVector,
+        setWavegenAutoscale,
+        resetWavegen,
+        getWavegenState,
+        getWavegenSampleRate,
+        resetDigitizer,
+        captureSamples,
+        getDigitizerSampleRate,
+        setChannelEnabled,
+        setContinuous,
+        setSpectrumMode,
+        setSpectrogramNoiseFloor,
+        setSpectrogramGammaStops,
+        getDisplayState,
+        readSpectrum,
+        readStatus,
+        readConfig
+    ]);
+
+    React.useEffect(() => {
+        /** Loads the named bitstream (staged under the device's product name). */
+        const loadFPGAConfiguration = async (productName: string, bitfileName: string, fpgaConfiguration: IFPGAConfiguration): Promise<void> => {
+            const bitfileUrl = `frontpanel://localhost/assets/bitfiles/${productName}/${bitfileName}`;
+
+            let response;
+            try {
+                response = await fetch(bitfileUrl);
+            }
+            catch {
+                throw new Error(`Failed to retrieve ${bitfileUrl}`);
             }
 
             if (!response.ok) {
-                console.error(`Fetch response error status: ${response.ok}`);
+                throw new Error(`Bitfile fetch failed: HTTP ${response.status} @ ${bitfileUrl} (productName='${productName}')`);
             }
 
             const arrayBuffer = await response.arrayBuffer();
 
-            const reportProgress: DataProgressCallback = (total: ByteCount, completed: ByteCount) => {
-                console.log("Configuration Progress: ", completed, " of ", total);
-            };
+            const reportProgress: DataProgressCallback = () => {};
 
             await fpgaConfiguration.loadConfigurationFromMemory(arrayBuffer, reportProgress);
         };
 
-        const initializeDevice = async (device: IDevice, topology: SafeTopology): Promise<FFTScopeContext> => {
+        /**
+         * Detects the attached SYZYGY pod(s), configures the FPGA with the
+         * matching variant bitstream, and builds the AXI drivers.
+         */
+        const initializeDevice = async (device: IDevice): Promise<FFTScopeContext> => {
             const deviceInfo = await device.getDeviceInfo();
 
             console.log(`Initializing Device Product: ${deviceInfo.productName} SerialNumber: ${deviceInfo.serialNumber}`);
 
-            const effectiveAdc: ADCProductType = "adc" in topology ? topology.adc : ADCProductType.SZG_ADC_LTC2268;
+            // Detect the attached pods from their SmartVIO DNA before configuring
+            // the FPGA. The Platform reports DNA independent of any bitstream.
+            const deviceSettings = await device.getDeviceSettings();
+            const settingKeys = (await deviceSettings?.getKeys()) ?? [];
 
-            const boardBitfiles = BitfileTable[deviceInfo.productName];
-            if (!boardBitfiles) {
-                throw new Error(`Unsupported board "${deviceInfo.productName}": no bitfile entry in BitfileTable`);
+            const readProductModel = async (key: string): Promise<string | undefined> => {
+                try {
+                    return (await deviceSettings?.getValue(key))?.toString();
+                } catch {
+                    return undefined;
+                }
+            };
+
+            // Snapshot every SYZYGY_*_PRODUCT_MODEL reported, for diagnostics.
+            const productModels = new Map<string, string | undefined>();
+            for (const key of settingKeys.filter((key) => /^SYZYGY\d+_PRODUCT_MODEL$/.test(key))) {
+                productModels.set(key, await readProductModel(key));
             }
-            const bitfile = boardBitfiles[effectiveAdc];
+            console.log(
+                `SYZYGY product models: ${
+                    [...productModels].map(([key, model]) => `${key}=${model ?? "<none>"}`).join(", ") ||
+                    "<none reported>"
+                }`
+            );
 
-            console.log(`Configuring bitfile: ${bitfile.path}`);
+            // The ADC is read from its Port B key; the DAC is matched against every
+            // reported product model.
+            const adcModel = productModels.get(ADC_PRODUCT_MODEL_KEY);
+            const dacModel = [...productModels.values()].find(isDacProductModel);
+
+            console.log(`Detected peripherals — DAC: ${dacModel || "<none>"}, ADC (Port B): ${adcModel || "<none>"}`);
+
+            const adcVariant = resolveADCVariant(adcModel);
+            const adcPresent = adcVariant !== undefined;
+            const dacPresent = dacModel !== undefined;
+
+            if (!adcPresent && !dacPresent) {
+                throw new Error(
+                    `No supported SYZYGY peripheral detected (Port A DAC reported '${dacModel ?? "<none>"}', ` +
+                    `Port B ADC reported '${adcModel ?? "<none>"}'). Connect an SZG-DAC-AD911X on Port A ` +
+                    `and/or an SZG-ADC-LTC2268 (14-bit) / SZG-ADC-LTC2264 (12-bit) on Port B, then restart.`
+                );
+            }
+
+            // DAC-only falls back to the 14-bit build
+            const variant = adcVariant ?? DEFAULT_ADC_VARIANT;
+
+            console.log(
+                `Selected ${variant.productType}: ${variant.bitfileName} @ ${variant.sampleRate / 1_000_000} MSPS` +
+                (adcPresent ? "" : " (DAC-only — ADC views disabled)")
+            );
 
             const fpgaConfiguration = device.getFPGAConfiguration();
+            await loadFPGAConfiguration(deviceInfo.productName, variant.bitfileName, fpgaConfiguration);
 
-            await loadFPGAConfiguration(bitfile.path, fpgaConfiguration);
+            const fpgaDataPort: IFPGADataPortAXI = await device.getFPGADataPortAXI();
 
-            const chip = ADCChipTable[effectiveAdc];
-            const adcConfiguration: ADCProductConfig = {
-                sampleRate:    bitfile.sampleRate,
-                adcBitWidth:   chip.adcBitWidth,
-                fftOutputPeak: chip.fftOutputPeak
-            };
+            // The two transforms run at independent rates.
+            const spectrumConfiguration = new FFTConfiguration(SPECTRUM_FFT_LENGTH, variant.sampleRate);
+            const waveformConfiguration = new FFTConfiguration(DAC_IFFT_LENGTH, DAC_SAMPLE_CLK);
 
-            const fftConfiguration = new FFTConfiguration(FFT_LENGTH, adcConfiguration.sampleRate);
+            const datapathCtrl = new DatapathCtrlDriver(fpgaDataPort.axiLite);
 
-            const hasDac = topology.kind !== "adcOnly";
-            const hasAdc = topology.kind !== "dacOnly";
+            const dacDriver = new DACDriver(
+                fpgaDataPort.axiLite,
+                datapathCtrl,
+                fpgaDataPort.axiStream,
+                DAC_IFFT_LENGTH,
+                100 // play_ready poll retries, 5 ms apart
+            );
 
-            if(deviceInfo.interfaceType === DeviceInterfaceType.GEN3) {
-                console.log("Initializing AXI driver...");
-
-                const fpgaDataPort = await device.getFPGADataPortAXI();
-
-                return {
-                    adcConfig: adcConfiguration,
-                    waveformGeneratorDriver: hasDac ? new AXIWaveformGeneratorDriver(fpgaDataPort, fftConfiguration, 100) : undefined,
-                    digitizerDriver:         hasAdc ? new AXIDigitizerDriver(fpgaDataPort, 4, SAMPLE_COUNT)               : undefined,
-                    spectrumAnalyzerDriver:  hasAdc ? new AXISpectrumAnalyzerDriver(fpgaDataPort, fftConfiguration, 8)     : undefined,
-                };
-            }
-
-            console.log("Initializing Classic driver...");
-
-            const fpgaDataPort = await device.getFPGADataPortClassic();
+            const adcDriver = new ADCDriver(fpgaDataPort.axiLite);
 
             return {
-                adcConfig: adcConfiguration,
-                waveformGeneratorDriver: hasDac ? new ClassicWaveformGeneratorDriver(fpgaDataPort, fftConfiguration, 100) : undefined,
-                digitizerDriver:         hasAdc ? new ClassicDigitizerDriver(fpgaDataPort, 4, SAMPLE_COUNT)                : undefined,
-                spectrumAnalyzerDriver:  hasAdc ? new ClassicSpectrumAnalyzerDriver(fpgaDataPort, fftConfiguration, 8)     : undefined,
+                adcPresent,
+                dacPresent,
+                datapathCtrl,
+                spectrumConfiguration,
+                waveformConfiguration,
+                dacDriver,
+                adcDriver,
+                captureSequencer: new CaptureSequencer(
+                    datapathCtrl,
+                    adcDriver,
+                    fpgaDataPort.axiStream,
+                    SAMPLE_COUNT,
+                    SPECTRUM_FFT_LENGTH
+                ),
+                waveformGenerator: new WaveformGenerator(dacDriver)
             };
-        };
-
-        const classifyTopology = (dacModel: string | undefined, adcModel: string | undefined): PeripheralTopology => {
-            const dac = ProductModelToDACType(dacModel);
-            const adc = ProductModelToADCType(adcModel);
-
-            if (dac && adcModel && !adc) {
-                return { kind: "unsafe", port: "B", detectedModel: adcModel };
-            }
-            if (adc && dacModel && !dac) {
-                return { kind: "unsafe", port: "A", detectedModel: dacModel };
-            }
-
-            if (dac && adc) return { kind: "complete", dac, adc };
-            if (dac)        return { kind: "dacOnly",  dac };
-            if (adc)        return { kind: "adcOnly",  adc };
-            return { kind: "missing" };
         };
 
         const targetDeviceSerialNumber = (window.FrontPanelEnv.targetDeviceSerialNumbers.length > 0) ? window.FrontPanelEnv.targetDeviceSerialNumbers[0] : "";
@@ -540,13 +600,21 @@ function App() {
 
         let deviceDisconnectedSubscription: IEventSubscription;
 
+        let isDisposed = false;
+
         DeviceWorkQueue.post(async () => {
+            if (isDisposed) {
+                return;
+            }
+
             console.log(`Opening Device '${targetDeviceSerialNumber}'...`);
 
             await deviceManager.startMonitoring();
 
+            // Step 1: Open the Device
             try {
                 device = await deviceManager.openDevice(targetDeviceSerialNumber);
+
                 deviceInfo = await device.getDeviceInfo();
 
                 console.log(`Opened Device Product: ${deviceInfo.productName} SerialNumber: ${deviceInfo.serialNumber}`);
@@ -558,194 +626,78 @@ function App() {
                 setError({
                     title: "Failed to Open Target Device",
                     description: `Unable to open device with serial number ${targetDeviceSerialNumber}`,
-                    details: `${error}`,
                     solution: "Verify that the device is properly connected and restart the application."
                 });
             }
 
             if(device) {
-                let topology: PeripheralTopology | undefined;
-                let peripheralQueryError: unknown;
+                // Step 2: Initialize the Device
+                console.log(`Initializing Device '${deviceInfo.serialNumber}'...`);
 
                 try {
-                    const deviceSettings = await device.getDeviceSettings();
+                    const context = await initializeDevice(device);
 
-                    const dacPeripheralModel = await deviceSettings?.getValue("SYZYGY0_PRODUCT_MODEL");
-                    const adcPeripheralModel = await deviceSettings?.getValue("SYZYGY1_PRODUCT_MODEL");
+                    // Bring up only the attached pods, before any view mounts:
+                    // an absent pod would just burn a 500 ms realign timeout.
+                    if (context.dacPresent) {
+                        await context.dacDriver.EnablePlayback();
+                    }
+                    if (context.adcPresent) {
+                        await context.captureSequencer.Reset();
+                    }
 
-                    console.log(`Detected on Port A: ${dacPeripheralModel || "<empty>"}`);
-                    console.log(`Detected on Port B: ${adcPeripheralModel || "<empty>"}`);
+                    // Push the default preset.
+                    if (context.dacPresent) {
+                        const enabled = wavegenVectorsRef.current
+                            .filter((slot) => slot.isEnabled)
+                            .map((slot) => slot.vector);
+                        const factor = await context.waveformGenerator.SetVectors(
+                            enabled,
+                            wavegenAutoscaleRef.current
+                        );
+                        setAmplitudeScaleFactor(factor);
+                    }
 
-                    topology = classifyTopology(dacPeripheralModel?.toString(), adcPeripheralModel?.toString());
+                    if (isDisposed) {
+                        return;
+                    }
+
+                    contextRef.current = context;
+                    setFFTScopeContext(context);
                 }
                 catch(error) {
-                    peripheralQueryError = error;
-                    console.error(`Failed to query peripherals on Device ${deviceInfo.serialNumber}: \n${error}`);
-                }
+                    console.error(`Failed to initialize Device ${deviceInfo.serialNumber}: \n${error}`);
 
-                if(topology) {
-                    switch(topology.kind) {
-                        case "unsafe": {
-                            const foreignPort = topology.port;
-                            const supportedPort = foreignPort === "B" ? "A" : "B";
-                            const supportedKind = foreignPort === "B" ? "DAC" : "ADC";
-
-                            console.error(`Refusing to configure FPGA: Port ${foreignPort} has unsupported peripheral "${topology.detectedModel}" while supported ${supportedKind} is on Port ${supportedPort}`);
-
-                            setFFTScopeContext(undefined);
-                            setError({
-                                title: "Unsafe peripheral configuration",
-                                description: `Port ${foreignPort} has an unsupported peripheral ("${topology.detectedModel}") while a supported ${supportedKind} is present on Port ${supportedPort}.`,
-                                details: `The FFTScope bitfile drives IOs on both Port A and Port B. Configuring the FPGA in this state may damage the peripheral on Port ${foreignPort}.`,
-                                solution: `Disconnect the peripheral on Port ${foreignPort} (or replace it with a supported peripheral) and restart the application.`
-                            });
-                            break;
-                        }
-                        case "missing": {
-                            console.error(`Failed to find DAC connected to port A or ADC connected on port B of Device ${deviceInfo.serialNumber}`);
-
-                            setFFTScopeContext(undefined);
-                            setError({
-                                title: "Failed to find DAC or ADC peripheral",
-                                description: `Unable to find supported DAC connected on port A or ADC connected on port B of ${deviceInfo.productName} with serial number ${deviceInfo.serialNumber}`,
-                                details: "",
-                                solution: "Verify that the SZG-DAC-AD9116 (or legacy POD-DAC-AD9116) is connected on port A and/or the SZG-ADC-LTC2268 or SZG-ADC-LTC2264 is connected on port B of the device and restart the application."
-                            });
-                            break;
-                        }
-                        case "complete":
-                        case "dacOnly":
-                        case "adcOnly": {
-                            console.log(`Initializing Device '${deviceInfo.serialNumber}'...`);
-
-                            try {
-                                const drivers = await initializeDevice(device, topology);
-
-                                await drivers.waveformGeneratorDriver?.Initialize();
-                                await drivers.waveformGeneratorDriver?.Reset();
-                                await drivers.digitizerDriver?.Reset();
-
-                                waveformDriverRef.current = drivers.waveformGeneratorDriver;
-                                digitizerDriverRef.current = drivers.digitizerDriver;
-                                spectrumDriverRef.current = drivers.spectrumAnalyzerDriver;
-                                fftOutputPeakRef.current = drivers.adcConfig.fftOutputPeak;
-                                sampleRateHzRef.current = drivers.adcConfig.sampleRate;
-
-                                if (drivers.waveformGeneratorDriver) {
-                                    const adapter = new WaveformGeneratorAdapter(drivers.waveformGeneratorDriver);
-                                    const initialScale = await seedAdapterFromVectors(adapter);
-                                    waveformAdapterRef.current = adapter;
-                                    setAmplitudeScaleFactor(initialScale);
-                                } else {
-                                    waveformAdapterRef.current = undefined;
-                                }
-
-                                setFFTScopeContext(drivers);
-
-                                // Expose the 21 FFTScope tools to the
-                                // Platform's AppToolDispatcher. No-op
-                                // when bindings weren't granted at
-                                // launch — `getMCP()` returns undefined
-                                // and AI calls never reach this app.
-                                //
-                                // Registration runs *after* the driver
-                                // refs and sample-rate refs are set
-                                // (above), so MCP read tools never
-                                // observe pre-init zeros.
-                                try {
-                                    await registerMcpBindings({
-                                        workQueue: DeviceWorkQueue,
-                                        drivers: {
-                                            waveform: waveformDriverRef,
-                                            digitizer: digitizerDriverRef,
-                                            spectrum: spectrumDriverRef
-                                        },
-                                        handlers: {
-                                            waveformInitialize: setWaveformInitialize,
-                                            waveformReset: setWaveformReset,
-                                            applyVectorEdit,
-                                            setAutoscale,
-                                            digitizerReset: setDigitizerReset,
-                                            captureOnce,
-                                            setChannelEnabled: onChannelEnableStateChange,
-                                            setContinuousEnabled,
-                                            setSpectrumMode,
-                                            setSpectrogramNoiseFloor,
-                                            setSpectrogramGammaStops
-                                        },
-                                        state: {
-                                            amplitudeScaleFactor: amplitudeScaleFactorRef,
-                                            channelEnableStates: channelEnableStatesRef,
-                                            spectrumMode: spectrumModeRef,
-                                            spectrogramNoiseFloor: spectrogramNoiseFloorRef,
-                                            spectrogramGammaStops: spectrogramGammaStopsRef,
-                                            digitizerSampleBuffers: digitizerSampleBuffersRef,
-                                            spectrumOutputBuffers: spectrumOutputBuffersRef,
-                                            fftOutputPeak: fftOutputPeakRef,
-                                            sampleRateHz: sampleRateHzRef,
-                                            fftLength: fftLengthRef,
-                                            committedVectors: committedVectorsRef
-                                        }
-                                    });
-                                } catch (mcpError) {
-                                    console.error("MCP binding registration failed:", mcpError);
-                                }
-                            }
-                            catch(error) {
-                                console.error(`Failed to initialize Device ${deviceInfo.serialNumber}: \n${error}`);
-
-                                setFFTScopeContext(undefined);
-                                setError({
-                                    title: "Failed to Initialize Device",
-                                    description: `Unable to initialize ${deviceInfo.productName} with serial number ${deviceInfo.serialNumber}`,
-                                    details: `${error}`,
-                                    solution: "Verify that the device is properly connected and restart the application."
-                                });
-                            }
-
-                            const onDeviceDisconnected = async (sender: IDeviceManager, serialNumber: string) => {
-                                console.info("Device Disconnected: " + serialNumber);
-                                if(serialNumber === deviceInfo.serialNumber) {
-                                    waveformDriverRef.current = undefined;
-                                    digitizerDriverRef.current = undefined;
-                                    spectrumDriverRef.current = undefined;
-                                    waveformAdapterRef.current = undefined;
-
-                                    setFFTScopeContext(undefined);
-                                    setError({
-                                        title: "Target Device Disconnected",
-                                        description: `${deviceInfo.productName} with serial number ${deviceInfo.serialNumber} was disconnected`,
-                                        details: "",
-                                        solution: "Connect the target device and restart the application."
-                                    });
-                                }
-                            }
-
-                            deviceDisconnectedSubscription = deviceManager.deviceDisconnectedEvent.subscribeAsync(onDeviceDisconnected);
-                            break;
-                        }
-                    }
-                }
-                else {
                     setFFTScopeContext(undefined);
                     setError({
-                        title: "Failed to Query Peripherals on Device",
-                        description: `Unable to query peripherals on ${deviceInfo.productName} with serial number ${deviceInfo.serialNumber}`,
-                        details: `${peripheralQueryError}`,
+                        title: "Failed to Initialize Device",
+                        description: `Unable to initialize ${deviceInfo.productName} with serial number ${deviceInfo.serialNumber}`,
                         solution: "Verify that the device is properly connected and restart the application."
                     });
                 }
+
+                // Step 3: Register for Device disconnection events
+                const onDeviceDisconnected = async (sender: IDeviceManager, serialNumber: string) => {
+                    console.info("Device Disconnected: " + serialNumber);
+                    if(serialNumber === deviceInfo.serialNumber) {
+                        setFFTScopeContext(undefined);
+                        setError({
+                            title: "Target Device Disconnected",
+                            description: `${deviceInfo.productName} with serial number ${deviceInfo.serialNumber} was disconnected`,
+                            solution: "Connect the target device and restart the application."
+                        });
+                    }
+                }
+
+                deviceDisconnectedSubscription = deviceManager.deviceDisconnectedEvent.subscribeAsync(onDeviceDisconnected);
             }
         });
 
         return () => {
             console.log(`App Use Effect::Cleanup`)
 
-            waveformDriverRef.current = undefined;
-            digitizerDriverRef.current = undefined;
-            spectrumDriverRef.current = undefined;
-            waveformAdapterRef.current = undefined;
-
+            isDisposed = true;
+            contextRef.current = undefined;
             setFFTScopeContext(undefined);
 
             deviceDisconnectedSubscription?.cancel();
@@ -757,51 +709,44 @@ function App() {
                 device?.close();
             });
         };
-    }, [seedAdapterFromVectors]);
+    }, []);
 
+    // Event Handlers
     const onExitButtonClick = () => {
         window.close();
     }
 
-    if ((fftScopeContext?.waveformGeneratorDriver !== undefined) || (fftScopeContext?.digitizerDriver)) {
+    if (fftScopeContext !== undefined) {
         return (
             <div className="App">
                 <FFTScopeView
+                    ref={fftScopeViewRef}
                     name="FFTScope"
-                    adcConfig={fftScopeContext.adcConfig}
-                    waveformGeneratorDriver={fftScopeContext.waveformGeneratorDriver}
-                    digitizerDriver={fftScopeContext.digitizerDriver}
-                    spectrumAnalyzerDriver={fftScopeContext.spectrumAnalyzerDriver}
+                    adcBitWidth={ADC_BIT_WIDTH}
+                    fftOutputPeak={FFT_OUTPUT_PEAK}
+                    captureSequencer={fftScopeContext.captureSequencer}
+                    adcPresent={fftScopeContext.adcPresent}
+                    dacPresent={fftScopeContext.dacPresent}
+                    spectrumConfiguration={fftScopeContext.spectrumConfiguration}
+                    waveformConfiguration={fftScopeContext.waveformConfiguration}
                     workQueue={DeviceWorkQueue}
-                    spectrumViewRef={spectrumViewRef}
-                    timeDomainViewRef={timeDomainViewRef}
-                    frequencyVectors={frequencyVectors}
-                    autoscaleEnabled={autoscaleEnabled}
+                    wavegenVectors={wavegenVectors}
+                    isAutoScaleEnabled={isAutoScaleEnabled}
                     amplitudeScaleFactor={amplitudeScaleFactor}
-                    onWaveformInitialize={() => { setWaveformInitialize().catch((e) => console.error(e)); }}
-                    onWaveformReset={() => { setWaveformReset().catch((e) => console.error(e)); }}
-                    onAutoscaleChange={(enabled) => { setAutoscale(enabled).catch((e) => console.error(e)); }}
-                    onVectorChange={onVectorChange}
-                    onVectorEnabledChange={onVectorEnabledChange}
-                    channelEnableStates={channelEnableStates}
-                    channelColors={CHANNEL_COLORS}
-                    onChannelEnableStateChange={onChannelEnableStateChange}
-                    continuousEnabled={continuousEnabled}
-                    onContinuousChange={setContinuousEnabled}
-                    onCaptureOnce={() => { captureOnce().catch((e) => console.error(e)); }}
-                    onDigitizerReset={() => {
-                        setDigitizerReset()
-                            .then(() => { if (!continuousEnabledRef.current) setContinuousEnabledState(true); })
-                            .catch((e) => console.error(e));
-                    }}
-                    spectrumMode={spectrumMode}
+                    onWavegenVectorChange={setWavegenVector}
+                    onWavegenAutoScaleChange={setWavegenAutoscale}
+                    onWavegenReset={resetWavegen}
+                    channelEnableStates={displayState.channelEnableStates}
+                    spectrumMode={displayState.spectrumMode}
+                    spectrogramNoiseFloor={displayState.spectrogramNoiseFloor}
+                    spectrogramGammaStops={displayState.spectrogramGammaStops}
+                    isContinuous={displayState.isContinuous}
+                    onChannelEnabledChange={setChannelEnabled}
                     onSpectrumModeChange={setSpectrumMode}
-                    spectrogramNoiseFloor={spectrogramNoiseFloor}
                     onSpectrogramNoiseFloorChange={setSpectrogramNoiseFloor}
-                    spectrogramGammaStops={spectrogramGammaStops}
                     onSpectrogramGammaStopsChange={setSpectrogramGammaStops}
-                    spectrumOutputBuffers={spectrumOutputBuffersRef.current}
-                />
+                    onContinuousChange={setContinuous}
+                    onDigitizerReset={resetDigitizer} />
             </div>
         );
     } else {
@@ -823,7 +768,7 @@ function App() {
                                 <AlertDialog.Action asChild>
                                     <button
                                         className="okButton"
-                                        onClick={(event) => onExitButtonClick()}>Exit Application</button>
+                                        onClick={() => onExitButtonClick()}>Exit Application</button>
                                 </AlertDialog.Action>
                             </div>
                         </AlertDialog.Content>

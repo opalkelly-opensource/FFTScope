@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ * Copyright (c) 2024-2026 Opal Kelly Incorporated
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -11,9 +11,6 @@ import classnames from "classnames";
 
 import "./Panel.css";
 
-/**
- * Properties for the Panel component.
- */
 interface PanelProps extends React.PropsWithChildren<NonNullable<unknown>> {
     title: string;
     className?: string;
@@ -21,9 +18,6 @@ interface PanelProps extends React.PropsWithChildren<NonNullable<unknown>> {
     headerRight?: ReactNode;
 }
 
-/**
- * Panel component for displaying a title, description, and content.
- */
 class Panel extends Component<PanelProps> {
     render() {
         return (

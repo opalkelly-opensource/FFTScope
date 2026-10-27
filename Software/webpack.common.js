@@ -16,6 +16,10 @@ module.exports = {
         { from: 'mcp.json', to: 'mcp.json' },
         { from: 'APP-INFO.md', to: 'assets/text' },
         { from: 'assets/images/fftscope-app-logo.svg', to: 'assets/images' },
+        // v2 bitstreams (fftscope_14.bit / fftscope_12.bit). The app picks one at
+        // runtime by the ADC pod's SmartVIO DNA and fetches
+        // frontpanel://localhost/assets/bitfiles/<productName>/<variant>.bit,
+        // staged under the device's product name.
         { from: 'assets/bitfiles', to: 'assets/bitfiles' }
       ],
     }),
@@ -34,14 +38,14 @@ module.exports = {
       {
         test: /\.(ico)$/i,
         type: 'asset/resource',
-        generator: { 
+        generator: {
           filename: 'assets/icons/[name][ext]'
         }
       },
       {
         test: /\.(png|svg|jpg|jpeg|gif)$/i,
         type: 'asset/resource',
-        generator: { 
+        generator: {
           filename: 'assets/images/[name][ext]'
         }
       },
@@ -50,16 +54,6 @@ module.exports = {
         type: 'asset/resource',
         generator: {
           filename: 'assets/fonts/[name][ext]'
-        }
-      },
-      {
-        test: /\.(bit)$/i,
-        type: 'asset/resource',
-        generator: {
-          filename: (sourcePath) => {
-            const productName = path.basename(path.dirname(sourcePath.filename));
-            return `assets/bitfiles/${productName}/[name][ext]`;
-          }
         }
       },
     ],

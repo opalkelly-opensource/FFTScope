@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ * Copyright (c) 2024-2026 Opal Kelly Incorporated
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -11,14 +11,8 @@ import "./NumberDragSlider.css";
 
 import { Vector2D } from "./Vector";
 
-/**
- * Event handler for handling when the value is changed.
- */
 export type ValueChangeEventHandler = (value: number) => void;
 
-/**
- * Properties for the NumberEditBox Component.
- */
 export interface NumberDragSliderProps {
     label: string;
     maximum: number;
@@ -34,11 +28,8 @@ function NumberDragSlider(props: NumberDragSliderProps) {
 
     const startSliderPositionRef = useRef<Vector2D>({ x: 0, y: 0 });
     const startSliderValueRef = useRef(0);
-    const dragSliderRef = useRef<HTMLDivElement>(null);
 
-    /**
-     * Handle mouse down on units label text to start dragging
-     */
+    /** Start dragging on mouse down over the units label. */
     const handleSliderMouseDown = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
         setIsSliderDragging(true);
@@ -46,13 +37,10 @@ function NumberDragSlider(props: NumberDragSliderProps) {
         startSliderPositionRef.current = { x: e.clientX, y: e.clientY };
         startSliderValueRef.current = props.value;
 
-        // Change cursor to indicate dragging
         document.body.style.cursor = 'move';
     }, [props.value]);
 
-    /**
-     * Handle mouse move during dragging
-     */
+    /** Drag horizontally for coarse steps, vertically for fine. */
     const handleSliderMouseMove = useCallback((e: MouseEvent) => {
         if (!isSliderDragging) return;
 
@@ -72,15 +60,11 @@ function NumberDragSlider(props: NumberDragSliderProps) {
         }
     }, [isSliderDragging, props.value, props.stepsPerPixel]);
 
-    /**
-     * Handle mouse up to stop dragging
-     */
     const handleSliderMouseUp = useCallback(() => {
         setIsSliderDragging(false);
         document.body.style.cursor = 'default';
     }, []);
 
-    // Add/remove event listeners for mouse move and up
     React.useEffect(() => {
         if (isSliderDragging) {
             document.addEventListener('mousemove', handleSliderMouseMove);
@@ -98,11 +82,10 @@ function NumberDragSlider(props: NumberDragSliderProps) {
             className="okNumberDragSliderLabel"
             onMouseDown={handleSliderMouseDown}
             style={{
-                cursor: isSliderDragging ? 'move' : 'move',
+                cursor: 'move',
                 userSelect: 'none',
                 WebkitUserSelect: 'none'
-            }}
-            ref={dragSliderRef}>
+            }}>
             {props.children ?? props.label}
         </span>
     );

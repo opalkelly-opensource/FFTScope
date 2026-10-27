@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ * Copyright (c) 2024-2026 Opal Kelly Incorporated
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -22,24 +22,14 @@ import { Line } from "react-chartjs-2";
 
 import { Vector2D } from "./Vector";
 
-/**
- * Time Domain View Properties
- */
 interface TimeDomainViewProps {
     label: string;
-    /**
-     * Native ADC bit width. Used to derive the Y-axis bounds for the
-     * time-domain chart: the chart spans [-2^(N-1), 2^(N-1)], matching
-     * the signed range of the ADC's native sample width.
-     */
+    /** Native ADC bit width; the chart's Y axis spans [-2^(N-1), 2^(N-1)]. */
     adcBitWidth: number;
     sampleCount: number;
     channelColors: string[];
 }
 
-/**
- * Chart component that plots the time-domain samples captured by the digitizer.
- */
 class TimeDomainView extends Component<TimeDomainViewProps> {
     private _ChartRef: React.RefObject<ChartJS<"line">>;
     private _ChartOptions: ChartOptions<"line">;
@@ -52,8 +42,6 @@ class TimeDomainView extends Component<TimeDomainViewProps> {
 
         this._ChartRef = React.createRef();
 
-        // Y-axis bounds: the ADC produces signed N-bit samples, so the
-        // chart spans the symmetric range [-2^(N-1), 2^(N-1)].
         const yAxisBound = Math.pow(2, props.adcBitWidth - 1);
 
         this._ChartOptions = {
@@ -64,7 +52,7 @@ class TimeDomainView extends Component<TimeDomainViewProps> {
                 x: {
                     type: "linear",
                     min: 0.0,
-                    max: 1024.0,
+                    max: props.sampleCount,
                     grid: {
                         color: "rgba(255, 255, 255, 0.1)"
                     }
@@ -86,7 +74,6 @@ class TimeDomainView extends Component<TimeDomainViewProps> {
             }
         };
 
-        // Create Chart Data that will be displayed by the ChartJS Chart
         const channels: Vector2D[][] = Array(2);
 
         channels[0] = new Array<Vector2D>(props.sampleCount)
@@ -157,7 +144,7 @@ class TimeDomainView extends Component<TimeDomainViewProps> {
         }
     }
 
-    public async UpdateChannelEnableStates(channelEnableStates: boolean[]) {
+    public UpdateChannelEnableStates(channelEnableStates: boolean[]): void {
         const signalChart = this._ChartRef.current;
 
         if (signalChart) {

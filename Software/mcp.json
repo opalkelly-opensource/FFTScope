@@ -1,0 +1,230 @@
+{
+    "tools": [
+        {
+            "name": "wavegen_initialize",
+            "description": "Bring up the DAC playout path: set dac_enable, push a silent frame, wait for play_ready, then re-apply the current 8 slots. Use when status_read reports dacReady or playReady false. Returns the applied autoscale factor and the full wavegen state.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "wavegen_set_vector",
+            "description": "Set one waveform-generator slot (frequency bin + amplitude in dBFS + enable) and re-apply the whole spectrum. Same shared handler as the UI slot editor. Output is mono for now: both DAC outputs (I and Q) carry the same signal. Returns the applied autoscale factor and the full wavegen state.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "slot": { "type": "integer", "minimum": 0, "maximum": 7, "description": "UI slot index (8 slots)" },
+                    "bin": { "type": "integer", "minimum": 0, "maximum": 1023, "description": "frequency bin (freq = bin * 125 MHz / 2048)" },
+                    "amplitudeDbfs": { "type": "number", "minimum": -120, "maximum": 0, "description": "tone amplitude in dBFS (0 = full scale)" },
+                    "enabled": { "type": "boolean" }
+                },
+                "required": ["slot", "bin", "amplitudeDbfs", "enabled"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "wavegen_set_autoscale",
+            "description": "Enable/disable autoscale (scales all tones down so their summed linear amplitude never exceeds full scale) and re-apply the spectrum. Returns the applied scale factor.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "enabled": { "type": "boolean" }
+                },
+                "required": ["enabled"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "wavegen_reset",
+            "description": "Reset Instrument: clear the hardware spectrum (DAC plays silence) and return every slot to disabled / -120 dBFS. Same shared handler as the UI button.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "wavegen_get_state",
+            "description": "Read the waveform-generator state: the 8 slot vectors (bin, amplitude in dBFS, enable, and freqHz), autoscale enable, the applied scale factor (amplitudeScaleFactor, linear multiplier on every tone, and amplitudeScaleDb), and the adapter's frequency-bin map (bin + summed linear amplitude) that defines the staged hardware spectrum.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "wavegen_get_sample_rate",
+            "description": "Read the DAC sample rate (Hz), the IFFT length (2048), and the per-bin frequency spacing (sampleRate / ifftLength). A wavegen bin's frequency is bin * binSpacingHz.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "digitizer_reset",
+            "description": "Realign the ADC deserializer and clear its sticky fault flags, then resume continuous capture (same handler as the UI Reset button). Returns adcReady, false if the deserializer did not lock.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "digitizer_capture_once",
+            "description": "Capture one ADC frame, plot it in the time-domain chart, and refresh the spectrum chart (spectrum mode only; the spectrogram refreshes on its own loop). Returns the same payload as digitizer_read_samples.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "digitizer_read_samples",
+            "description": "Capture one ADC frame and return both channels as MSB-aligned signed 16-bit sample arrays (ch1, ch2) plus sampleRate, sampleCount, and adcBitWidth. In the loopback bench setup this example assumes — DAC channel 1 cabled to ADC channel 2 — ch2 carries the generated waveform. Discards one stale frame internally before capturing.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "digitizer_get_sample_rate",
+            "description": "Read the ADC sample rate (Hz) of the loaded variant, the forward-FFT length (2048), and the per-bin frequency spacing. A spectrum_read_latest bin's frequency is index * binSpacingHz.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "digitizer_set_continuous",
+            "description": "Start or stop the continuous capture loop that refreshes the time-domain and spectrum charts about every 35 ms. digitizer_read_samples and spectrum_read_latest work either way.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "enabled": { "type": "boolean" }
+                },
+                "required": ["enabled"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "digitizer_set_channel_enabled",
+            "description": "Show or hide one channel's trace in the time-domain chart. The spectrum and spectrogram always show both channels, and the gateware always captures both.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel": { "type": "integer", "enum": [1, 2], "description": "ADC channel (1 or 2)" },
+                    "enabled": { "type": "boolean" }
+                },
+                "required": ["channel", "enabled"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "digitizer_get_channel_enabled",
+            "description": "Read whether a channel's trace is shown in the time-domain chart.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel": { "type": "integer", "enum": [1, 2], "description": "ADC channel (1 or 2)" }
+                },
+                "required": ["channel"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "spectrum_set_mode",
+            "description": "Switch the spectrum panel between the live spectrum plot and the rolling spectrogram.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "mode": { "type": "string", "enum": ["spectrum", "spectrogram"]}
+                },
+                "required": ["mode"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "spectrum_get_mode",
+            "description": "Read the spectrum panel's display mode (spectrum or spectrogram).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "spectrum_set_noise_floor",
+            "description": "Set the spectrogram noise floor in dBFS (clamped to -130..-10). Bins below it render as the floor color. No visible effect in spectrum mode. Returns the value in effect.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "floorDbfs": { "type": "number", "minimum": -130, "maximum": -10}
+                },
+                "required": ["floorDbfs"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "spectrum_get_noise_floor",
+            "description": "Read the spectrogram noise floor in dBFS.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "spectrum_set_gamma",
+            "description": "Set the spectrogram contrast gamma (clamped to 0.25..4.0). Below 1.0 emphasizes loud bins, above 1.0 emphasizes quiet bins, 1.0 is linear. Quantized to 1/8-octave steps; returns the value in effect. No visible effect in spectrum mode.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "gamma": { "type": "number", "minimum": 0.25, "maximum": 4.0}
+                },
+                "required": ["gamma"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "spectrum_get_gamma",
+            "description": "Read the spectrogram contrast gamma in effect.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "spectrum_read_latest",
+            "description": "Capture one frame from the hardware forward FFT and return both channels' magnitudes in dBFS (ch1, ch2), 1024 bins each covering DC to Nyquist, plus sampleRate, fftLength, binCount, and binSpacingHz. Bin index n is n * binSpacingHz. Empty bins report -200 dBFS.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "status_read",
+            "description": "Read all three status registers. datapath_ctrl STATUS (0x04): raw plus decoded bits captureDone, playReady. Also returns the two pod CSRs decoded in full: adcReady, captureClkAlive, alignDone, alignFail, fifoOverflow, frameError (syzygy_adc, raw in adcStatus) and dacReady, fifoUnderflow (syzygy_dac, raw in dacStatus). fifoOverflow, frameError and fifoUnderflow are sticky, so they report a fault that has already cleared; the ADC's clear on a digitizer reset.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "config_read",
+            "description": "Read the datapath_ctrl CONFIG register (0x08), raw plus decoded fields: dacEnable, pathSel.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        }
+    ]
+}

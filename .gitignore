@@ -1,36 +1,46 @@
-# OS files
-.DS_Store
-Thumbs.db
+# --- FrontPanel app (Software/) ---
+Software/node_modules/
+Software/dist/
+Software/output/
+npm-debug.log*
 
-# Editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# --- FrontPanel bench app (Software-bench/) ---
+Software-bench/node_modules/
+Software-bench/dist/
+Software-bench/output/
 
-# Generic logs + temp
-*.log
-*.tmp
+# --- npm auth tokens (never commit; contains a registry token) ---
+.npmrc
 
-# Vivado tooling output (every project.tcl sets project_dir to "v")
-v/
-.Xil/
-*.jou
-*.str
-
-# Vitis HLS build dirs + runtime metadata
-**/hls/*/vitis/
-**/vitis/
+# --- Vivado build scratch ---
+# project.tcl builds out-of-tree (FFTSCOPE_OUT); these are stray artifacts if a
+# build is ever run in-place. The per-variant builds (Gateware/FFTScope-12,
+# Gateware/FFTScope-14) each drop their own vivado/ scratch next to project.tcl,
+# so these globs use **/ to match at any depth under Gateware/.
+Gateware/**/vivado/
+Gateware/**/.Xil/
+Gateware/**/*.log
+Gateware/**/*.jou
+Gateware/**/dfx_runtime.txt
+# Per-variant IP folders hold user-supplied IP cores; only the README is tracked.
+Gateware/*/IP/*
+!Gateware/*/IP/README.txt
 dfx_runtime.txt
+*.backup.log
+# Stray Vivado artifacts at the repo root (e.g. validate/probe runs launched here)
+/.gen/
+/.srcs/
+/.cache/
+/.Xil/
+/vivado*.jou
+/vivado*.log
+/vivado*.backup.jou
+/vivado*.str
 
-# FrontPanel SDK HDL stubs. The okHost.{vp,xdc,veo} files under any
-# FrontPanel/ directory are copied in by the developer per that
-# directory's FrontPanel/README.txt; only the README is tracked.
-**/FrontPanel/*
-!**/FrontPanel/README*
+# --- OS / editor cruft ---
+Thumbs.db
+.DS_Store
 
-# Python
-**/__pycache__/
-*.pyc
-*.pyo
+# --- Claude Code harness ---
+.claude/
+scratchpad/trace_*.csv

@@ -13,7 +13,7 @@
             "sourceMaps": true,
             "sourceMapPathOverrides":
             {
-                "webpack://fftscope-example-app/./*": "${webRoot}/*"
+                "webpack://fftscopev2-app/./*": "${webRoot}/*"
             },
             "trace": true,
             "preLaunchTask": "Launch FrontPanel App (development)"

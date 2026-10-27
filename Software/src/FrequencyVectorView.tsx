@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ * Copyright (c) 2024-2026 Opal Kelly Incorporated
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -7,7 +7,7 @@
 
 import { Hertz } from "./FFTConfiguration";
 
-import { FrequencyVector } from "./WaveformGeneratorAdapter";
+import { FrequencyVector } from "./WaveformGenerator";
 
 import "./FrequencyVectorView.css";
 
@@ -18,9 +18,6 @@ export interface FrequencyVectorViewProps {
     vector: FrequencyVector;
 }
 
-/**
- *
- */
 function FrequencyVectorView(props: FrequencyVectorViewProps) {
     const { frequency, vector } = props;
 

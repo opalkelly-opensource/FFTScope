@@ -1,16 +1,15 @@
 /**
- * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ * Copyright (c) 2024-2026 Opal Kelly Incorporated
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
 
 import * as Switch from "@radix-ui/react-switch"
-import * as RadioGroup from "@radix-ui/react-radio-group"
 
 import { Hertz } from "./FFTConfiguration";
 
-import { FrequencyVector, dBFS } from "./WaveformGeneratorAdapter";
+import { FrequencyVector, dBFS } from "./WaveformGenerator";
 
 import "./FrequencyVectorEditView.css";
 
@@ -18,15 +17,9 @@ import NumberDragSlider from "./NumberDragSlider";
 
 import SinWaveformIcon from "./SineWaveformIcon";
 
-/**
- * Event handler for handling changes in the frequency vector.
- */
 export type FrequencyVectorChangeEventHandler = (vectorId: number, vector: FrequencyVector) => void;
 export type FrequencyVectorEnabledChangeEventHandler = (vectorId: number, enabled: boolean) => void;
 
-/**
- * Properties for the Frequency Vector Component.
- */
 interface FrequencyVectorEditViewProps {
     id: number;
     frequency: Hertz;
@@ -69,7 +62,6 @@ function FrequencyVectorEditView(props: FrequencyVectorEditViewProps) {
         props.onEnabledChange(props.id, checked);
     }
 
-
     const formatFrequencyValue = (frequency: Hertz) => {
         const frequencyKiloHertz = (frequency / 1000);
 
@@ -91,30 +83,24 @@ function FrequencyVectorEditView(props: FrequencyVectorEditViewProps) {
                     <NumberDragSlider
                         label="kHz"
                         minimum={0}
-                        maximum={512}
-                        stepsPerPixel={{coarse: 1.0, fine: 0.125}}      //Coarse: 1 pixel per step, Fine: 8 pixels per step
+                        maximum={1024}
+                        stepsPerPixel={{coarse: 1.0, fine: 0.125}}
                         value={props.vector.bin}
                         onValueChange={onBinNumberSliderChange}
                     />
                 </div>
             </div>
             <div className="okFrequencyVectorEditRow">
-                <RadioGroup.Root className="okRadioGroupRoot" defaultValue="sine">
-                    <RadioGroup.Item
-                        className="okRadioGroupItem"
-                        value="sine"
-                        aria-label="Left aligned"
-                        >
-                            <SinWaveformIcon/>
-                    </RadioGroup.Item>
-                </RadioGroup.Root>
+                <div className="okWaveformIndicator">
+                    <SinWaveformIcon />
+                </div>
                 <div className="okAmplitudeEditBox">
                     <span className="okAmplitudeText">{props.vector.amplitude}</span>
                     <NumberDragSlider
                         label="dBFS"
                         minimum={-120}
                         maximum={0}
-                        stepsPerPixel={{coarse: 0.25, fine: 0.065}}      //Coarse: 4 pixel per step, Fine: 16 pixels per step
+                        stepsPerPixel={{coarse: 0.25, fine: 0.065}}
                         value={props.vector.amplitude}
                         onValueChange={onAmplitudeSliderChange}
                     />

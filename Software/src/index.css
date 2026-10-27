@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ * Copyright (c) 2024-2026 Opal Kelly Incorporated
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -8,6 +8,15 @@
 :root {
     --app-fonts: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu",
         "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+
+    --ok-green: #44BD84;
+    --ok-green-active: #329466;
+    --ok-gray-1: #989DA3;
+    --ok-gray-2: #D0D7DF;
+    --ok-black: #020202;
+    --ok-dark: #282828;
+    --ok-mint: #CBF9E3;
+    --ok-magenta: #D472FA;
 }
 
 @font-face {
@@ -52,4 +61,104 @@ code {
     display: flex;
     align-items: flex-start;
     justify-content: flex-start;
+}
+
+button {
+    all: unset;
+}
+
+.okSwitchRoot {
+    /* Layout */
+    display: inline-flex;
+    width: 18.333px;
+    height: 10px;
+    align-items: center;
+    position: relative;
+    vertical-align: top;
+    flex-shrink: 0;
+    box-sizing: border-box;
+
+    /* Style */
+    background-color: var(--ok-gray-1);
+    border-radius: 9999px;
+    cursor: pointer;
+
+    &[data-state="checked"] {
+        background-color: var(--ok-green);
+    }
+
+    &[data-disabled] {
+        opacity: 0.5;
+        cursor: default;
+    }
+}
+
+.okSwitchThumb {
+    /* Layout */
+    display: block;
+    width: 8.33px;
+    height: 8.33px;
+    background-color: white;
+    border-radius: 9999px;
+    box-sizing: border-box;
+    transform: translateX(0.83px);
+
+    &[data-state="checked"] {
+        transform: translateX(9.17px);
+    }
+}
+
+.okSwitchContainer {
+    /* Layout */
+    display: flex;
+    padding: 4px;
+    align-items: center;
+    align-self: stretch;
+    gap: 10px;
+}
+
+.okSwitchLabel {
+    /* Typography */
+    color: var(--ok-gray-2);
+    text-align: center;
+    font-family: Inter;
+    font-size: 14px;
+    font-style: normal;
+    font-weight: 500;
+    line-height: 14px; /* 100% */
+}
+
+.okButton {
+    /* Layout */
+    display: inline-flex;
+    padding: 6px 12px;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+
+    /* Style */
+    border-width: 0px;
+    border-radius: 4px;
+    background: var(--ok-green);
+    cursor: pointer;
+
+    /* Typography */
+    color: #fff;
+    text-align: center;
+    font-family: Inter, "Nunito Sans", sans-serif, ui-sans-serif;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 12px; /* 100% */
+
+    /* State Pressed */
+    &:is(:active) {
+        background: var(--ok-green-active);
+    }
+
+    /* State Disabled */
+    &:is(:disabled) {
+        background: var(--ok-gray-2);
+        cursor: default;
+    }
 }

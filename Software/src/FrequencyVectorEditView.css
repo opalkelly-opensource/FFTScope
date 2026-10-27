@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ * Copyright (c) 2024-2026 Opal Kelly Incorporated
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -16,7 +16,7 @@
     /* Style */
     border-radius: 4px;
     border: 1px solid #4953C4;
-    background: var(--Dark, #282828);
+    background: var(--ok-dark);
     box-shadow: 4px 4px 18px 0 rgba(0, 0, 0, 0.80);
 }
 
@@ -32,12 +32,12 @@
 
     /* Style */
     border-radius: 4px;
-    background: #020202;
+    background: var(--ok-black);
 }
 
 .okFrequencyVectorEditPanel .okFrequencyText {
     /* Typography */
-    color: #CBF9E3;
+    color: var(--ok-mint);
     text-align: right;
     font-family: "Roboto Mono";
     font-size: 24px;
@@ -57,12 +57,12 @@
 
     /* Style */
     border-radius: 4px;
-    background: #020202;
+    background: var(--ok-black);
 }
 
 .okFrequencyVectorEditPanel .okAmplitudeText {
     /* Typography */
-    color: #CBF9E3;
+    color: var(--ok-mint);
     text-align: right;
     font-family: "Roboto Mono";
     font-size: 20px;
@@ -73,7 +73,7 @@
 
 .okFrequencyVectorEditPanel .okUnitsLabel {
     /* Typography */
-    color: #D472FA;
+    color: var(--ok-magenta);
     font-family: "Roboto Mono";
     font-size: 12px;
     font-style: normal;
@@ -89,18 +89,7 @@
     align-self: stretch;
 }
 
-.okFrequencyVectorEditPanel button {
-    all: unset;
-}
-
-.okFrequencyVectorEditPanel .okRadioGroupRoot {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    flex: 1 0 0;
-}
-
-.okFrequencyVectorEditPanel .okRadioGroupItem {
+.okFrequencyVectorEditPanel .okWaveformIndicator {
     /* Layout */
     display: flex;
     width: 34px;
@@ -110,51 +99,11 @@
     align-items: center;
     gap: 8px;
     box-sizing: border-box;
+    /* Absorbs the row's free space, pushing the amplitude box to the right. */
+    margin-right: auto;
 
     /* Style */
     border-radius: 4px;
-    background: #020202;
-}
-
-.okFrequencyVectorEditPanel .okRadioGroupItem:hover {
-    background-color: var(--violet-3);
-}
-
-.okFrequencyVectorEditPanel .okRadioGroupItem[data-state="checked"] {
-    /* Style */
-    border: 1px solid #44BD84;
-}
-
-.okFrequencyVectorEditPanel .okSwitchRoot {
-    /* Layout */
-    display: inline-flex;
-    width: 18.333px;
-    height: 10px;
-    align-items: center;
-    position: relative;
-    vertical-align: top;
-    flex-shrink: 0;
-    box-sizing: border-box;
-
-    /* Style */
-    background-color: #989DA3;
-    border-radius: 9999px;
-
-    &[data-state="checked"] {
-        background-color: #44BD84;
-    }
-}
-
-.okFrequencyVectorEditPanel .okSwitchThumb {
-    /* Layout */
-    display: block;
-    width: 8.33px;
-    height: 8.33px;
-    background-color: white;
-    border-radius: 9999px;
-    box-sizing: border-box;
-    transform: translateX(0.83px);
-    &[data-state="checked"] {
-        transform: translateX(9.17px);
-    }
+    background: var(--ok-black);
+    border: 1px solid var(--ok-green);
 }

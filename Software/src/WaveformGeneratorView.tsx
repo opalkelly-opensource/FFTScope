@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2024-2025 Opal Kelly Incorporated
+ * Copyright (c) 2024-2026 Opal Kelly Incorporated
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -16,133 +16,48 @@ import FrequencyVectorView from "./FrequencyVectorView";
 
 import FrequencyVectorEditView from "./FrequencyVectorEditView";
 
-import {
-    WaveformGeneratorDriver,
-    WaveformGeneratorState,
-    WaveformGeneratorStateChangeEventArgs
-} from "./WaveformGeneratorDriver";
+import FFTConfiguration from "./FFTConfiguration";
 
-import { FrequencyVector } from "./WaveformGeneratorAdapter";
+import { FrequencyVector, FrequencyVectorState } from "./WaveformGenerator";
 
-import { Subscription } from "sub-events";
-
-/**
- * Type representing the state of a Frequency Vector slot.
- */
-export type FrequencyVectorState = {
-    vector: FrequencyVector;
-    isEnabled: boolean;
-};
-
-/**
- * Waveform Generator View Properties.
- *
- * The View is purely presentational. App.tsx owns the eight-vector
- * state, the autoscale toggle, the amplitude scale factor, and the
- * WaveformGeneratorAdapter — so that UI controls and the matching MCP
- * tools both go through one shared handler per action.
- */
 interface WaveformGeneratorViewProps {
     label: string;
-    driver: WaveformGeneratorDriver;
-    frequencyVectors: FrequencyVectorState[];
-    autoscaleEnabled: boolean;
+    fftConfiguration: FFTConfiguration;
+    vectors: FrequencyVectorState[];
+    isAutoScaleEnabled: boolean;
     amplitudeScaleFactor: number;
-    onInitialize: () => void;
-    onReset: () => void;
-    onAutoscaleChange: (enabled: boolean) => void;
-    onVectorChange: (vectorId: number, vector: FrequencyVector) => void;
-    onVectorEnabledChange: (vectorId: number, enabled: boolean) => void;
+    onVectorChange: (slot: number, vector: FrequencyVector, enabled: boolean) => Promise<number>;
+    onAutoScaleChange: (enabled: boolean) => Promise<number>;
+    onReset: () => Promise<void>;
 }
 
-interface WaveformGeneratorViewState {
-    isOperationPending: boolean;
-}
-
-class WaveformGeneratorView extends Component<
-    WaveformGeneratorViewProps,
-    WaveformGeneratorViewState
-> {
-    private _StateChangeSubscription: Subscription | null = null;
-
-    constructor(props: WaveformGeneratorViewProps) {
-        super(props);
-
-        this.state = {
-            isOperationPending: false
-        };
-    }
-
-    componentDidMount(): void {
-        this.setState({
-            isOperationPending:
-                this.props.driver.State === WaveformGeneratorState.InitializePending ||
-                this.props.driver.State === WaveformGeneratorState.ResetPending
-        });
-
-        this._StateChangeSubscription = this.props.driver.StatechangedEvent.subscribe(
-            this.OnStateChange.bind(this)
-        );
-    }
-
-    componentWillUnmount(): void {
-        this._StateChangeSubscription?.cancel();
-    }
-
-    componentDidUpdate(prevProps: WaveformGeneratorViewProps): void {
-        if (prevProps.driver !== this.props.driver) {
-            this._StateChangeSubscription?.cancel();
-            this._StateChangeSubscription = this.props.driver.StatechangedEvent.subscribe(
-                this.OnStateChange.bind(this)
-            );
-        }
-    }
-
+class WaveformGeneratorView extends Component<WaveformGeneratorViewProps> {
     render(): ReactNode {
-        const showInitializeButton =
-            this.props.driver.State === WaveformGeneratorState.InitializationFailed ||
-            this.props.driver.State === WaveformGeneratorState.Initial;
-
         const autoscaleText: string =
             "Autoscale " + this.FormatDecibelString(this.props.amplitudeScaleFactor);
-
         return (
             <div className="okWaveformGenerator">
                 <div className="okWaveformGeneratorControlPanel">
-                    {showInitializeButton && (
-                        <button
-                            className="okButton"
-                            onMouseDown={() => this.props.onInitialize()}
-                            disabled={this.state.isOperationPending}
-                        >
-                            Initialize
-                        </button>
-                    )}
                     <button
                         className="okButton"
-                        onMouseDown={() => this.props.onReset()}
-                        disabled={this.state.isOperationPending}
+                        onMouseDown={this.OnResetButtonClick.bind(this)}
                     >
                         Reset Instrument
                     </button>
                     <div className="okSwitchContainer">
-                        <Switch.Root
-                            className="okSwitchRoot"
-                            checked={this.props.autoscaleEnabled}
-                            onCheckedChange={(checked) => this.props.onAutoscaleChange(checked)}
-                        >
+                        <Switch.Root className="okSwitchRoot" checked={this.props.isAutoScaleEnabled} onCheckedChange={this.OnUpdateAutoScaleChange.bind(this)}>
                             <Switch.Thumb className="okSwitchThumb" />
                         </Switch.Root>
                         <span className="okSwitchLabel">{autoscaleText}</span>
                     </div>
                 </div>
                 <div className="okWaveformGeneratorContentPanel">
-                    {this.props.frequencyVectors.map((item, i) => (
+                    {this.props.vectors.map((item, i) => (
                         <Popover.Root key={`FrequencyVector[${i}]`}>
                             <Popover.Trigger asChild>
                                 <button className="okFrequencyVectorItem" data-state={item.isEnabled ? 'on' : 'off'}>
                                     <FrequencyVectorView
-                                        frequency={this.props.driver.FFTConfiguration.GetBinFrequency(
+                                        frequency={this.props.fftConfiguration.GetBinFrequency(
                                             item.vector.bin
                                         )}
                                         vector={item.vector}
@@ -153,13 +68,13 @@ class WaveformGeneratorView extends Component<
                                 <Popover.Content side="right" sideOffset={15}>
                                     <FrequencyVectorEditView
                                         id={i}
-                                        frequency={this.props.driver.FFTConfiguration.GetBinFrequency(
+                                        frequency={this.props.fftConfiguration.GetBinFrequency(
                                             item.vector.bin
                                         )}
                                         vector={item.vector}
-                                        onVectorChange={this.props.onVectorChange}
+                                        onVectorChange={this.OnFrequencyVectorChange.bind(this)}
                                         enabled={item.isEnabled}
-                                        onEnabledChange={this.props.onVectorEnabledChange}
+                                        onEnabledChange={this.OnFrequencyVectorIsEnabledChange.bind(this)}
                                     />
                                 </Popover.Content>
                             </Popover.Portal>
@@ -170,19 +85,58 @@ class WaveformGeneratorView extends Component<
         );
     }
 
+    /**
+     * Formats the string representation of a decibel value.
+     * @param value - Decibel value to format.
+     * @returns String representation of the decibel value.
+     */
     private FormatDecibelString(value: number): string {
         const decibelValue: number = 20.0 * Math.log10(value);
+
         return decibelValue.toPrecision(3) + " dB";
     }
 
-    private OnStateChange(args: WaveformGeneratorStateChangeEventArgs): void {
-        this.setState({
-            isOperationPending:
-                args.newState === WaveformGeneratorState.InitializePending ||
-                args.newState === WaveformGeneratorState.ResetPending
+    /** Event handler for the Reset Instrument button. */
+    private OnResetButtonClick(): void {
+        this.props.onReset().catch((error) => {
+            console.error("WaveformGenerator reset failed:", error);
         });
+    }
 
-        console.log("WaveformGenerator State: " + args.previousState + " => " + args.newState);
+    /**
+     * Event handler that updates a Frequency Vector with a new Frequency Vector.
+     * @param vectorId - Identifier of the Frequency Vector to update.
+     * @param vector - New Frequency Vector to update the existing Frequency Vector.
+     */
+    private OnFrequencyVectorChange(vectorId: number, vector: FrequencyVector): void {
+        const slot = this.props.vectors[vectorId];
+        if (slot === undefined) return;
+        this.props.onVectorChange(vectorId, vector, slot.isEnabled).catch((error) => {
+            console.error("WaveformGenerator vector change failed:", error);
+        });
+    }
+
+    /**
+     * Event handler that updates the isEnabled state of a Frequency Vector.
+     * @param vectorId - Identifier of the Frequency Vector to update.
+     * @param enabled - New state of the isEnabled flag.
+     */
+    private OnFrequencyVectorIsEnabledChange(vectorId: number, enabled: boolean): void {
+        const slot = this.props.vectors[vectorId];
+        if (slot === undefined) return;
+        this.props.onVectorChange(vectorId, slot.vector, enabled).catch((error) => {
+            console.error("WaveformGenerator enable change failed:", error);
+        });
+    }
+
+    /**
+     * Event handler that is called when the AutoScale state changes.
+     * @param checked - New state of the AutoScale switch.
+     */
+    private OnUpdateAutoScaleChange(checked: boolean): void {
+        this.props.onAutoScaleChange(checked).catch((error) => {
+            console.error("WaveformGenerator autoscale change failed:", error);
+        });
     }
 }
 

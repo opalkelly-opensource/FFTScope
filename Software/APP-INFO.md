@@ -4,8 +4,9 @@ FFTScope chains three instruments: a tone-summing waveform generator feeds the D
 
 ## Host Boards
 
-* [XEM8320](https://opalkelly.com/products/xem8320/)
 * [SZG-HUB1450-AU10P](https://opalkelly.com/products/szg-hub1450-au10p/)
+
+For XEM8320 support, use FFTScope v1.2.1
 
 ## SYZYGY Peripherals
 
@@ -47,6 +48,12 @@ Plots FFT magnitude versus frequency (MHz) for both ADC channels.
 
 ## Version History
 
+* 2.0.0
+  * New AXI-based architecture
+  * Uses new SYZYGY ADC and SYZYGY DAC IP cores
+  * Allow full 125MSPS capture using the 14-bit variant of SYZYGY ADC
+* 1.2.1
+  * Fixed public source release missing the FrontPanel MCP source files
 * 1.2.0
   * Added Frontpanel MCP Support
 * 1.1.1
